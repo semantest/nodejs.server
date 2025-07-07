@@ -1,6 +1,6 @@
 {
-  "name": "@semantest/server",
-  "version": "2.0.0",
+  "name": "@semantest/nodejs-server",
+  "version": "1.0.0",
   "description": "Event-driven Node.js server framework for coordinating browser extension automation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -72,6 +72,14 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/semantest/nodejs.server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/semantest/nodejs.server/issues"
+  },
+  "homepage": "https://github.com/semantest/nodejs.server",
   "files": [
     "dist",
     "README.md",
