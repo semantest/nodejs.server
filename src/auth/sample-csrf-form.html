@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSRF Protection Demo - Semantest</title>
+  <meta name="csrf-token" content="{{csrf.token}}">
+  <meta name="csrf-header" content="{{csrf.headerName}}">
+  <meta name="csrf-cookie" content="{{csrf.cookieName}}">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #007acc;
+      padding-bottom: 10px;
+    }
+    .section {
+      margin: 30px 0;
+      padding: 20px;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      background-color: #fafafa;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="text"], input[type="email"], textarea, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #007acc;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #005a9e;
+    }
+    .info-box {
+      background-color: #e3f2fd;
+      border: 1px solid #bbdefb;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+    .error-box {
+      background-color: #ffebee;
+      border: 1px solid #ffcdd2;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+      color: #c62828;
+    }
+    .success-box {
+      background-color: #e8f5e8;
+      border: 1px solid #c8e6c9;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+      color: #2e7d32;
+    }
+    .code-block {
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+    }
+    #results {
+      margin-top: 20px;
+    }
+    .token-info {
+      background-color: #fff3e0;
+      border: 1px solid #ffcc02;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🛡️ CSRF Protection Demo</h1>
+    
+    <div class="info-box">
+      <strong>What is CSRF Protection?</strong><br>
+      Cross-Site Request Forgery (CSRF) protection prevents malicious websites from making unauthorized requests to this application on behalf of authenticated users. This demo shows how our double-submit cookie pattern works.
+    </div>
+
+    <div class="token-info">
+      <strong>Current CSRF Token Information:</strong><br>
+      <strong>Token:</strong> <span id="current-token">{{csrf.token}}</span><br>
+      <strong>Header Name:</strong> {{csrf.headerName}}<br>
+      <strong>Cookie Name:</strong> {{csrf.cookieName}}<br>
+      <strong>Form Field:</strong> {{csrf.formFieldName}}
+    </div>
+
+    <!-- Traditional Form Submission -->
+    <div class="section">
+      <h2>📝 Traditional Form Submission</h2>
+      <p>This form includes a hidden CSRF token field and will be validated server-side.</p>
+      
+      <form id="traditional-form" action="/api/form-submit" method="POST" data-csrf-protected="true">
+        {{csrfHiddenInput}}
+        
+        <div class="form-group">
+          <label for="name">Name:</label>
+          <input type="text" id="name" name="name" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="email">Email:</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="message">Message:</label>
+          <textarea id="message" name="message" rows="4" required></textarea>
+        </div>
+        
+        <button type="submit">Submit Form</button>
+        <button type="button" onclick="refreshCSRFToken()">Refresh CSRF Token</button>
+      </form>
+    </div>
+
+    <!-- AJAX Request Demo -->
+    <div class="section">
+      <h2>⚡ AJAX Request Demo</h2>
+      <p>These buttons demonstrate AJAX requests with automatic CSRF token inclusion.</p>
+      
+      <button onclick="makeAjaxRequest('GET')">GET Request (Safe)</button>
+      <button onclick="makeAjaxRequest('POST')">POST Request (Protected)</button>
+      <button onclick="makeAjaxRequest('PUT')">PUT Request (Protected)</button>
+      <button onclick="makeAjaxRequest('DELETE')">DELETE Request (Protected)</button>
+      
+      <div class="form-group" style="margin-top: 15px;">
+        <label for="ajax-data">Test Data (JSON):</label>
+        <textarea id="ajax-data" placeholder='{"test": "data"}'>{
+  "action": "test",
+  "timestamp": new Date().toISOString()
+}</textarea>
+      </div>
+    </div>
+
+    <!-- Extension Request Demo -->
+    <div class="section">
+      <h2>🔌 Chrome Extension Request Demo</h2>
+      <p>This simulates a request from a Chrome extension (should bypass CSRF protection).</p>
+      
+      <div class="form-group">
+        <label for="extension-id">Extension ID:</label>
+        <input type="text" id="extension-id" placeholder="chrome-extension://abcdefghijklmnop" value="chrome-extension://example-extension-id">
+      </div>
+      
+      <button onclick="makeExtensionRequest()">Simulate Extension Request</button>
+    </div>
+
+    <!-- Token Management -->
+    <div class="section">
+      <h2>🔄 Token Management</h2>
+      <p>Test CSRF token rotation and management features.</p>
+      
+      <button onclick="rotateCSRFToken()">Rotate CSRF Token</button>
+      <button onclick="getTokenInfo()">Get Token Info</button>
+      <button onclick="testInvalidToken()">Test Invalid Token</button>
+      <button onclick="clearTokens()">Clear All Tokens</button>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <!-- CSRF Protection JavaScript -->
+  <script>
+    // CSRF Protection Configuration
+    window.CSRF_CONFIG = {
+      token: '{{csrf.token}}',
+      headerName: '{{csrf.headerName}}',
+      cookieName: '{{csrf.cookieName}}',
+      formFieldName: '{{csrf.formFieldName}}'
+    };
+  </script>
+
+  <!-- Include the CSRF protection script -->
+  <script>
+    {{csrfAjaxScript}}
+  </script>
+
+  <!-- Demo-specific JavaScript -->
+  <script>
+    // Results display
+    function displayResult(title, data, isError = false) {
+      const resultsDiv = document.getElementById('results');
+      const resultClass = isError ? 'error-box' : 'success-box';
+      
+      const resultHtml = `
+        <div class="${resultClass}">
+          <strong>${title}</strong><br>
+          <div class="code-block">${JSON.stringify(data, null, 2)}</div>
+        </div>
+      `;
+      
+      resultsDiv.innerHTML = resultHtml + resultsDiv.innerHTML;
+    }
+
+    // Traditional form submission
+    document.getElementById('traditional-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const formData = new FormData(this);
+      const data = Object.fromEntries(formData.entries());
+      
+      try {
+        const response = await fetch(this.action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        displayResult('Form Submission Result', result, !response.ok);
+      } catch (error) {
+        displayResult('Form Submission Error', { error: error.message }, true);
+      }
+    });
+
+    // AJAX request demo
+    async function makeAjaxRequest(method) {
+      const testData = document.getElementById('ajax-data').value;
+      let data = null;
+      
+      try {
+        data = JSON.parse(testData);
+      } catch (e) {
+        data = { message: testData };
+      }
+      
+      const options = {
+        method: method,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      if (method !== 'GET' && method !== 'HEAD') {
+        options.body = JSON.stringify(data);
+      }
+      
+      try {
+        const response = await fetch('/api/test-endpoint', options);
+        const result = await response.json();
+        displayResult(`${method} Request Result`, result, !response.ok);
+      } catch (error) {
+        displayResult(`${method} Request Error`, { error: error.message }, true);
+      }
+    }
+
+    // Extension request demo
+    async function makeExtensionRequest() {
+      const extensionId = document.getElementById('extension-id').value;
+      
+      try {
+        const response = await fetch('/api/automation/dispatch', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Origin': extensionId,
+            'X-Extension-Id': extensionId.replace('chrome-extension://', '')
+          },
+          body: JSON.stringify({
+            extensionId: extensionId.replace('chrome-extension://', ''),
+            action: 'test',
+            payload: { demo: true }
+          }),
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        displayResult('Extension Request Result', result, !response.ok);
+      } catch (error) {
+        displayResult('Extension Request Error', { error: error.message }, true);
+      }
+    }
+
+    // Refresh CSRF token
+    async function refreshCSRFToken() {
+      try {
+        const response = await fetch('/auth/csrf-token', {
+          credentials: 'include'
+        });
+        const result = await response.json();
+        
+        if (result.csrfToken) {
+          document.getElementById('current-token').textContent = result.csrfToken;
+          window.CSRF_CONFIG.token = result.csrfToken;
+          CSRF.token = result.csrfToken;
+          CSRF.updateAllForms();
+          displayResult('Token Refresh', result);
+        }
+      } catch (error) {
+        displayResult('Token Refresh Error', { error: error.message }, true);
+      }
+    }
+
+    // Rotate CSRF token
+    async function rotateCSRFToken() {
+      try {
+        const response = await fetch('/auth/csrf-rotate', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        const result = await response.json();
+        
+        if (result.csrfToken) {
+          document.getElementById('current-token').textContent = result.csrfToken;
+          window.CSRF_CONFIG.token = result.csrfToken;
+          CSRF.token = result.csrfToken;
+          CSRF.updateAllForms();
+          displayResult('Token Rotation', result);
+        }
+      } catch (error) {
+        displayResult('Token Rotation Error', { error: error.message }, true);
+      }
+    }
+
+    // Get token info
+    async function getTokenInfo() {
+      try {
+        const response = await fetch('/auth/csrf-token', {
+          credentials: 'include'
+        });
+        const result = await response.json();
+        displayResult('Token Information', result);
+      } catch (error) {
+        displayResult('Token Info Error', { error: error.message }, true);
+      }
+    }
+
+    // Test invalid token
+    async function testInvalidToken() {
+      try {
+        const response = await fetch('/api/test-endpoint', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': 'invalid-token-12345'
+          },
+          body: JSON.stringify({ test: 'invalid token test' }),
+          credentials: 'include'
+        });
+        const result = await response.json();
+        displayResult('Invalid Token Test', result, !response.ok);
+      } catch (error) {
+        displayResult('Invalid Token Test Error', { error: error.message }, true);
+      }
+    }
+
+    // Clear tokens
+    async function clearTokens() {
+      try {
+        const response = await fetch('/auth/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        const result = await response.json();
+        displayResult('Clear Tokens', result);
+        
+        // Clear local token display
+        document.getElementById('current-token').textContent = 'No token';
+        window.CSRF_CONFIG.token = '';
+        CSRF.token = '';
+      } catch (error) {
+        displayResult('Clear Tokens Error', { error: error.message }, true);
+      }
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+      displayResult('Page Loaded', {
+        message: 'CSRF protection demo initialized',
+        csrfEnabled: true,
+        tokenSet: !!window.CSRF_CONFIG.token
+      });
+    });
+  </script>
+</body>
+</html>
