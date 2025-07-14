@@ -9,8 +9,8 @@ import {
   createTokenBindingMiddleware,
   utils 
 } from '../jwt-security-enhancements';
-import { TokenManager } from '../token-manager';
 import { ConsoleSecurityAuditLogger } from '../security-audit-logger';
+import { createMockTokenManager, MockTokenManager } from './mocks/token-manager.mock';
 
 // Mock Express objects
 const mockRequest = (overrides = {}): Partial<Request> => ({
@@ -18,7 +18,7 @@ const mockRequest = (overrides = {}): Partial<Request> => ({
   path: '/api/test',
   method: 'GET',
   ip: '127.0.0.1',
-  socket: { remoteAddress: '127.0.0.1' },
+  socket: { remoteAddress: '127.0.0.1' } as any,
   ...overrides
 });
 
@@ -33,19 +33,17 @@ const mockResponse = (): Partial<Response> => {
 const mockNext: NextFunction = jest.fn();
 
 // Mock TokenManager
-const mockTokenManager = {
-  verifyAccessToken: jest.fn(),
-  isTokenBlacklisted: jest.fn()
-} as unknown as TokenManager;
+let mockTokenManager: MockTokenManager;
 
 describe('JWT Security Enhancements', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTokenManager = createMockTokenManager();
   });
 
   describe('createEnhancedJWTMiddleware', () => {
     it('should reject requests without token', async () => {
-      const middleware = createEnhancedJWTMiddleware({ tokenManager: mockTokenManager });
+      const middleware = createEnhancedJWTMiddleware({ tokenManager: mockTokenManager as any });
       const req = mockRequest();
       const res = mockResponse();
       
@@ -70,7 +68,7 @@ describe('JWT Security Enhancements', () => {
       (mockTokenManager.isTokenBlacklisted as jest.Mock).mockResolvedValue(false);
       
       const middleware = createEnhancedJWTMiddleware({ 
-        tokenManager: mockTokenManager,
+        tokenManager: mockTokenManager as any,
         bindToIP: false,
         bindToDevice: false 
       });
@@ -103,7 +101,7 @@ describe('JWT Security Enhancements', () => {
       (mockTokenManager.verifyAccessToken as jest.Mock).mockResolvedValue(decoded);
       (mockTokenManager.isTokenBlacklisted as jest.Mock).mockResolvedValue(true);
       
-      const middleware = createEnhancedJWTMiddleware({ tokenManager: mockTokenManager });
+      const middleware = createEnhancedJWTMiddleware({ tokenManager: mockTokenManager as any });
       
       const req = mockRequest({
         headers: { authorization: `Bearer ${token}` }
@@ -129,7 +127,7 @@ describe('JWT Security Enhancements', () => {
       (mockTokenManager.isTokenBlacklisted as jest.Mock).mockResolvedValue(false);
       
       const middleware = createEnhancedJWTMiddleware({ 
-        tokenManager: mockTokenManager,
+        tokenManager: mockTokenManager as any,
         bindToIP: true 
       });
       
@@ -158,7 +156,7 @@ describe('JWT Security Enhancements', () => {
       (mockTokenManager.isTokenBlacklisted as jest.Mock).mockResolvedValue(false);
       
       const middleware = createEnhancedJWTMiddleware({ 
-        tokenManager: mockTokenManager,
+        tokenManager: mockTokenManager as any,
         bindToIP: false,
         bindToDevice: false,
         shortLivedTokenPaths: ['/api/admin/*']
@@ -184,7 +182,7 @@ describe('JWT Security Enhancements', () => {
       const logSpy = jest.spyOn(mockLogger, 'logAuthEvent');
       
       const middleware = createEnhancedJWTMiddleware({ 
-        tokenManager: mockTokenManager,
+        tokenManager: mockTokenManager as any,
         auditLogger: mockLogger 
       });
       
@@ -203,7 +201,7 @@ describe('JWT Security Enhancements', () => {
 
   describe('createGlobalAPIProtection', () => {
     it('should protect /api/* paths', async () => {
-      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager });
+      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager as any });
       
       const req = mockRequest({ path: '/api/users' });
       const res = mockResponse();
@@ -215,7 +213,7 @@ describe('JWT Security Enhancements', () => {
     });
 
     it('should skip public paths', async () => {
-      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager });
+      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager as any });
       
       const publicPaths = ['/health', '/info', '/auth/login'];
       
@@ -231,7 +229,7 @@ describe('JWT Security Enhancements', () => {
     });
 
     it('should skip non-API paths', async () => {
-      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager });
+      const middleware = createGlobalAPIProtection({ tokenManager: mockTokenManager as any });
       
       const req = mockRequest({ path: '/static/image.png' });
       const res = mockResponse();
@@ -305,6 +303,7 @@ describe('JWT Security Enhancements', () => {
 
       it('should get IP from x-forwarded-for header', () => {
         const req = mockRequest({
+          ip: undefined,
           headers: { 'x-forwarded-for': '10.0.0.1, 192.168.1.1' }
         });
         

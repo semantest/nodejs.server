@@ -326,7 +326,7 @@ function extractToken(req: Request): string | null {
 function getClientIP(req: Request): string {
   return req.ip || 
          req.headers['x-forwarded-for']?.toString().split(',')[0] || 
-         req.socket.remoteAddress || 
+         req.socket?.remoteAddress || 
          'unknown';
 }
 
@@ -345,6 +345,7 @@ function generateDeviceFingerprint(req: Request): string {
 }
 
 function isShortLivedPath(path: string, patterns: string[]): boolean {
+  if (!path) return false;
   return patterns.some(pattern => {
     if (pattern.endsWith('*')) {
       return path.startsWith(pattern.slice(0, -1));
