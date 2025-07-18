@@ -1,25 +1,50 @@
-# Web-Buddy Node.js Server Framework
+# @semantest/nodejs.server
 
-> Event-driven coordination server for browser extension automation
+> Infrastructure orchestration server for Semantest domain modules
 
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![WebSocket](https://img.shields.io/badge/WebSocket-Real--time-orange.svg)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-## Overview
+## 🏗️ Overview
 
-Web-Buddy Node.js Server Framework provides a robust, event-driven coordination layer for managing browser extension automation. Built on TypeScript-EDA patterns, it enables seamless communication between external clients and browser extensions through WebSocket connections and REST APIs.
+The Semantest Node.js Server provides **infrastructure orchestration** for domain modules using Domain-Driven Design (DDD) principles. It serves as the coordination layer between domain modules, handling cross-domain communication, security, and infrastructure concerns.
 
-## Key Features
+## 🎯 Architecture Role
 
-- 🎯 **Event-Driven Architecture**: Built on TypeScript-EDA patterns for modularity and extensibility
-- 🔌 **WebSocket Coordination**: Real-time communication with browser extensions
-- 🌐 **REST API Gateway**: HTTP endpoints for automation requests and system management  
-- 🔄 **Intelligent Routing**: Smart request routing based on extension capabilities
-- 📊 **Real-Time Monitoring**: Comprehensive metrics and health monitoring
-- 🛡️ **Security First**: Authentication, rate limiting, and secure communication
+This server operates at the **Infrastructure Layer** of the DDD architecture:
+
+- **Domain Layer**: `@semantest/images.google.com`, `@semantest/chatgpt.com` (domain logic)
+- **Application Layer**: Domain modules' application services
+- **Infrastructure Layer**: **`@semantest/nodejs.server`** (this module)
+
+### Key Responsibilities
+1. **Cross-Domain Coordination**: Orchestrate communication between domain modules
+2. **Security Infrastructure**: Authentication, authorization, and audit logging
+3. **Event Bus**: Centralized event routing and distribution
+4. **Session Management**: Manage user sessions and context
+5. **API Gateway**: External API access to domain functionality
+
+## 🚀 Key Features
+
+### Infrastructure Orchestration
+- 🎯 **Event-Driven Architecture**: Built on `@semantest/core` patterns for modularity
+- 🔌 **Cross-Domain Communication**: Coordinate between domain modules
+- 🌐 **API Gateway**: Unified access to domain functionality
+- 🔄 **Intelligent Routing**: Route requests to appropriate domain modules
+
+### Security & Compliance
+- 🛡️ **Security Infrastructure**: Authentication, authorization, and audit logging
+- 🔒 **Domain Boundary Security**: Enforce security boundaries between domains
+- 📊 **Compliance Monitoring**: Track and audit cross-domain operations
+- 🚨 **Security Event Analysis**: Monitor and respond to security events
+
+### Operational Excellence
+- 📈 **Real-Time Monitoring**: Health monitoring and metrics collection
 - 🔧 **Graceful Degradation**: Automatic failover and error recovery
+- 📋 **Session Management**: User session and context management
+- 🌐 **WebSocket Coordination**: Real-time communication with browser extensions
 
 ## Quick Start
 

@@ -1,6 +1,6 @@
 {
-  "name": "@web-buddy/nodejs-server",
-  "version": "1.0.0",
+  "name": "@semantest/server",
+  "version": "2.0.0",
   "description": "Event-driven Node.js server framework for coordinating browser extension automation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,6 +17,7 @@
     "clean": "rimraf dist"
   },
   "keywords": [
+    "semantest",
     "automation",
     "browser-extension",
     "nodejs",
@@ -26,8 +27,15 @@
     "websocket",
     "api-gateway"
   ],
-  "author": "Web-Buddy Team",
+  "author": "Semantest Team <team@semantest.com>",
   "license": "GPL-3.0",
+  "homepage": "https://semantest.com/packages/server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/semantest/semantest.git",
+    "directory": "packages/server"
+  },
+  "bugs": "https://github.com/semantest/semantest/issues",
   "dependencies": {
     "compression": "^1.8.0",
     "cors": "^2.8.5",
@@ -64,14 +72,6 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rydnr/web-buddy-nodejs-server.git"
-  },
-  "bugs": {
-    "url": "https://github.com/rydnr/web-buddy-nodejs-server/issues"
-  },
-  "homepage": "https://github.com/rydnr/web-buddy-nodejs-server#readme",
   "files": [
     "dist",
     "README.md",
