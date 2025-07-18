@@ -1,9 +1,11 @@
 /**
- * @fileoverview Password hashing manager for secure password storage
- * @description Handles password hashing, verification, and security
- * @author Web-Buddy Team
+ * @fileoverview Production password hashing manager with bcrypt
+ * @description Handles password hashing, verification, and security with real bcrypt
+ * @author Semantest Team
  */
 
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { Adapter } from '../../stubs/typescript-eda-stubs';
 
 /**
@@ -20,18 +22,17 @@ export class PasswordHashManager extends Adapter {
   }
 
   /**
-   * Hash password with salt and pepper
+   * Hash password with salt and pepper using bcrypt
    */
   public async hashPassword(password: string): Promise<string> {
     try {
       // Add pepper to password
       const pepperedPassword = this.addPepper(password);
       
-      // Generate salt and hash
-      const salt = await this.generateSalt();
-      const hash = await this.hashWithSalt(pepperedPassword, salt);
+      // Generate hash using bcrypt
+      const hash = await bcrypt.hash(pepperedPassword, this.saltRounds);
       
-      console.log('🔒 Password hashed successfully');
+      console.log('🔒 Password hashed successfully with bcrypt');
       return hash;
     } catch (error) {
       console.error('Error hashing password:', error);
@@ -40,15 +41,15 @@ export class PasswordHashManager extends Adapter {
   }
 
   /**
-   * Verify password against hash
+   * Verify password against hash using bcrypt
    */
   public async verifyPassword(password: string, hash: string): Promise<boolean> {
     try {
       // Add pepper to password
       const pepperedPassword = this.addPepper(password);
       
-      // Verify against hash
-      const isValid = await this.compareWithHash(pepperedPassword, hash);
+      // Verify against hash using bcrypt
+      const isValid = await bcrypt.compare(pepperedPassword, hash);
       
       console.log(`🔍 Password verification: ${isValid ? 'valid' : 'invalid'}`);
       return isValid;
@@ -243,29 +244,10 @@ export class PasswordHashManager extends Adapter {
   }
 
   /**
-   * Generate salt
+   * Generate additional entropy for passwords
    */
-  private async generateSalt(): Promise<string> {
-    // In production, use bcrypt.genSalt()
-    return Math.random().toString(36).substring(2, 15);
-  }
-
-  /**
-   * Hash password with salt
-   */
-  private async hashWithSalt(password: string, salt: string): Promise<string> {
-    // In production, use bcrypt.hash()
-    return `${salt}:${Buffer.from(password + salt).toString('base64')}`;
-  }
-
-  /**
-   * Compare password with hash
-   */
-  private async compareWithHash(password: string, hash: string): Promise<boolean> {
-    // In production, use bcrypt.compare()
-    const [salt, expectedHash] = hash.split(':');
-    const actualHash = Buffer.from(password + salt).toString('base64');
-    return actualHash === expectedHash;
+  private generatePasswordEntropy(): string {
+    return crypto.randomBytes(16).toString('hex');
   }
 
   /**
@@ -295,12 +277,10 @@ export class PasswordHashManager extends Adapter {
   }
 
   /**
-   * Generate secure token
+   * Generate secure token using crypto
    */
   private generateSecureToken(): string {
-    return Math.random().toString(36).substring(2, 15) + 
-           Math.random().toString(36).substring(2, 15) +
-           Date.now().toString(36);
+    return crypto.randomBytes(32).toString('hex');
   }
 
   /**
