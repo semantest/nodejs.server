@@ -10,6 +10,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { Server } from 'http';
+import { itemRouter, seedTestData } from '../../items/infrastructure/http/item.routes';
 
 /**
  * Port interface for HTTP server operations
@@ -325,6 +326,15 @@ export class HttpServerAdapter extends HttpServerPort {
         timestamp: new Date().toISOString()
       });
     });
+
+    // Mount item routes
+    this.app.use('/api', itemRouter);
+    console.log('📍 Item routes mounted at /api');
+
+    // Seed test data in development mode
+    if (process.env.NODE_ENV !== 'production') {
+      seedTestData().catch(console.error);
+    }
 
     // 404 handler
     this.app.use('*', (req: Request, res: Response) => {

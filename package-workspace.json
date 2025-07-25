@@ -1,0 +1,82 @@
+{
+  "name": "@semantest/server",
+  "version": "2.0.0",
+  "description": "Event-driven Node.js server framework for coordinating browser extension automation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "dev:server": "ts-node src/start-server.ts",
+    "start": "node dist/index.js",
+    "start:server": "npm run build && node dist/start-server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "docs": "typedoc src --out docs",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "semantest",
+    "automation",
+    "browser-extension",
+    "nodejs",
+    "coordination",
+    "event-driven",
+    "typescript-eda",
+    "websocket",
+    "api-gateway"
+  ],
+  "author": "Semantest Team <team@semantest.com>",
+  "license": "GPL-3.0",
+  "homepage": "https://semantest.com/packages/server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/semantest/semantest.git",
+    "directory": "packages/server"
+  },
+  "bugs": "https://github.com/semantest/semantest/issues",
+  "dependencies": {
+    "compression": "^1.8.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "helmet": "^7.2.0",
+    "joi": "^17.11.0",
+    "redis": "^4.6.10",
+    "reflect-metadata": "^0.1.13",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.4",
+    "@types/cors": "^2.8.15",
+    "@types/express": "^4.17.19",
+    "@types/jest": "^29.5.5",
+    "@types/node": "^20.8.0",
+    "@types/supertest": "^2.0.14",
+    "@types/uuid": "^9.0.5",
+    "@types/ws": "^8.5.8",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "eslint": "^8.51.0",
+    "jest": "^29.7.0",
+    "rimraf": "^5.0.5",
+    "supertest": "^6.3.3",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.1",
+    "typedoc": "^0.25.2",
+    "typescript": "^5.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
