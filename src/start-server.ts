@@ -13,6 +13,7 @@ import { messageRouter } from './messages/infrastructure/http/message.routes';
 import { queueRouter } from './queues/infrastructure/http/queue.routes';
 import { healthRouter } from './health/infrastructure/http/health.routes';
 import { monitoringRouter } from './monitoring/infrastructure/http/monitoring.routes';
+import { securityHeaders, rateLimiters } from './security/infrastructure/middleware/security.middleware';
 
 const PORT = process.env.PORT || 3003;
 
@@ -41,6 +42,12 @@ async function startServer() {
 
   // Compression
   app.use(compression());
+
+  // Additional security headers
+  app.use(securityHeaders);
+
+  // Apply general rate limiting to all routes
+  app.use(rateLimiters.api);
 
   // Body parsing
   app.use(express.json({ limit: '10mb' }));

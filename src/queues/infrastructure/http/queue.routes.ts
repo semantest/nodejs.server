@@ -5,6 +5,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { DownloadQueueManager, QueueConfig } from '../../application/services/download-queue-manager';
 import { QueuePriority } from '../../domain/entities/queue-item.entity';
+import { 
+  rateLimiters, 
+  validateEnqueue, 
+  sanitizeInput,
+  validateInput 
+} from '../../../security/infrastructure/middleware/security.middleware';
 
 // Initialize queue manager
 const queueConfig: QueueConfig = {
@@ -24,7 +30,11 @@ export const queueRouter = Router();
  * POST /queue/enqueue
  * Add item to download queue
  */
-queueRouter.post('/queue/enqueue', async (req: Request, res: Response, next: NextFunction) => {
+queueRouter.post('/queue/enqueue', 
+  rateLimiters.enqueue,
+  sanitizeInput,
+  ...validateEnqueue,
+  async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { url, priority = 'normal', headers, metadata, addon_id, callback_url } = req.body;
 
@@ -81,7 +91,9 @@ queueRouter.get('/queue/status', (req: Request, res: Response, next: NextFunctio
  * GET /queue/item/:id
  * Get specific item status
  */
-queueRouter.get('/queue/item/:id', (req: Request, res: Response, next: NextFunction) => {
+queueRouter.get('/queue/item/:id', 
+  validateInput.id,
+  (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const item = queueManager.getItemStatus(id);
@@ -107,7 +119,9 @@ queueRouter.get('/queue/item/:id', (req: Request, res: Response, next: NextFunct
  * DELETE /queue/item/:id
  * Cancel a queued item
  */
-queueRouter.delete('/queue/item/:id', (req: Request, res: Response, next: NextFunction) => {
+queueRouter.delete('/queue/item/:id', 
+  validateInput.id,
+  (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const cancelled = queueManager.cancel(id);
@@ -152,7 +166,10 @@ queueRouter.get('/queue/dlq', (req: Request, res: Response, next: NextFunction) 
  * POST /queue/dlq/:id/retry
  * Retry item from DLQ
  */
-queueRouter.post('/queue/dlq/:id/retry', (req: Request, res: Response, next: NextFunction) => {
+queueRouter.post('/queue/dlq/:id/retry', 
+  validateInput.id,
+  rateLimiters.strict,
+  (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const retried = queueManager.retryFromDLQ(id);
