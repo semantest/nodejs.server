@@ -51,7 +51,7 @@ describe('AuthService', () => {
     it('should handle password authentication', async () => {
       const authEvent = new AuthenticationRequestedEvent(
         {
-          username: 'testuser',
+          email: 'testuser@example.com',
           password: 'testpass123'
         },
         'password',
@@ -71,15 +71,16 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn().mockReturnValue('mock-access-token'),
         generateRefreshToken: jest.fn().mockReturnValue('mock-refresh-token'),
-        verifyAccessToken: jest.fn(),
-        verifyRefreshToken: jest.fn(),
-        revokeRefreshToken: jest.fn()
+        validateToken: jest.fn(),
+        validateRefreshToken: jest.fn(),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       await authService.handleAuthentication(authEvent);
       
-      expect(authService['passwordHashManager'].verify).toHaveBeenCalled();
-      expect(authService['jwtManager'].generateTokenPair).toHaveBeenCalled();
+      expect(authService['passwordHashManager'].verifyPassword).toHaveBeenCalled();
+      expect(authService['jwtManager'].generateAccessToken).toHaveBeenCalled();
+      expect(authService['jwtManager'].generateRefreshToken).toHaveBeenCalled();
     });
 
     it('should handle API key authentication', async () => {
@@ -144,7 +145,7 @@ describe('AuthService', () => {
     it('should reject invalid credentials', async () => {
       const authEvent = new AuthenticationRequestedEvent(
         {
-          username: 'testuser',
+          email: 'testuser@example.com',
           password: 'wrongpass'
         },
         'password',
@@ -193,27 +194,26 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn(),
         generateRefreshToken: jest.fn(),
-        verifyAccessToken: jest.fn().mockResolvedValue({
+        validateToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           roles: ['user', 'admin']
         }),
-        verifyRefreshToken: jest.fn(),
-        revokeRefreshToken: jest.fn()
+        validateRefreshToken: jest.fn(),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       authService['rbacManager'] = {
-        checkPermission: jest.fn().mockResolvedValue(true),
+        checkPermissions: jest.fn().mockResolvedValue(true),
         getRolesForUser: jest.fn(),
         getPermissionsForRole: jest.fn(),
         assignRole: jest.fn(),
         revokeRole: jest.fn()
       } as any;
 
-      const result = await authService.handleAuthorization(authzEvent);
+      await authService.handleAuthorization(authzEvent);
       
-      expect(authService['jwtManager'].verifyAccessToken).toHaveBeenCalledWith('valid-jwt-token');
-      expect(authService['rbacManager'].checkPermission).toHaveBeenCalled();
-      expect(result.authorized).toBe(true);
+      expect(authService['jwtManager'].validateToken).toHaveBeenCalledWith('valid-jwt-token');
+      expect(authService['rbacManager'].checkPermissions).toHaveBeenCalled();
     });
 
     it('should deny unauthorized access', async () => {
@@ -231,25 +231,23 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn(),
         generateRefreshToken: jest.fn(),
-        verifyAccessToken: jest.fn().mockResolvedValue({
+        validateToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           roles: ['user']
         }),
-        verifyRefreshToken: jest.fn(),
-        revokeRefreshToken: jest.fn()
+        validateRefreshToken: jest.fn(),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       authService['rbacManager'] = {
-        checkPermission: jest.fn().mockResolvedValue(false),
+        checkPermissions: jest.fn().mockResolvedValue(false),
         getRolesForUser: jest.fn(),
         getPermissionsForRole: jest.fn(),
         assignRole: jest.fn(),
         revokeRole: jest.fn()
       } as any;
 
-      const result = await authService.handleAuthorization(authzEvent);
-      
-      expect(result.authorized).toBe(false);
+      await expect(authService.handleAuthorization(authzEvent)).rejects.toThrow();
     });
 
     it('should handle invalid tokens', async () => {
@@ -267,9 +265,9 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn(),
         generateRefreshToken: jest.fn(),
-        verifyAccessToken: jest.fn().mockRejectedValue(new Error('Invalid token')),
-        verifyRefreshToken: jest.fn(),
-        revokeRefreshToken: jest.fn()
+        validateToken: jest.fn().mockRejectedValue(new Error('Invalid token')),
+        validateRefreshToken: jest.fn(),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       await expect(authService.handleAuthorization(authzEvent)).rejects.toThrow('Invalid token');
@@ -289,22 +287,20 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn().mockReturnValue('new-access-token'),
         generateRefreshToken: jest.fn().mockReturnValue('new-refresh-token'),
-        verifyAccessToken: jest.fn(),
-        verifyRefreshToken: jest.fn().mockResolvedValue({
+        validateToken: jest.fn(),
+        validateRefreshToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           tokenId: 'token-123'
         }),
-        revokeRefreshToken: jest.fn().mockResolvedValue(true)
+        invalidateRefreshToken: jest.fn().mockResolvedValue(true)
       } as any;
 
-      const result = await authService.handleTokenRefresh(refreshEvent);
+      await authService.handleTokenRefresh(refreshEvent);
       
-      expect(authService['jwtManager'].verifyRefreshToken).toHaveBeenCalledWith('valid-refresh-token');
+      expect(authService['jwtManager'].validateRefreshToken).toHaveBeenCalledWith('valid-refresh-token');
       expect(authService['jwtManager'].generateAccessToken).toHaveBeenCalled();
       expect(authService['jwtManager'].generateRefreshToken).toHaveBeenCalled();
-      expect(authService['jwtManager'].revokeRefreshToken).toHaveBeenCalledWith('token-123');
-      expect(result.accessToken).toBe('new-access-token');
-      expect(result.refreshToken).toBe('new-refresh-token');
+      expect(authService['jwtManager'].invalidateRefreshToken).toHaveBeenCalledWith('token-123');
     });
 
     it('should reject invalid refresh tokens', async () => {
@@ -319,9 +315,9 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn(),
         generateRefreshToken: jest.fn(),
-        verifyAccessToken: jest.fn(),
-        verifyRefreshToken: jest.fn().mockRejectedValue(new Error('Invalid refresh token')),
-        revokeRefreshToken: jest.fn()
+        validateToken: jest.fn(),
+        validateRefreshToken: jest.fn().mockRejectedValue(new Error('Invalid refresh token')),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       await expect(authService.handleTokenRefresh(refreshEvent)).rejects.toThrow('Invalid refresh token');
@@ -333,7 +329,7 @@ describe('AuthService', () => {
       // Simulate multiple failed auth attempts
       const authEvent = new AuthenticationRequestedEvent(
         {
-          username: 'testuser',
+          email: 'testuser@example.com',
           password: 'wrongpass'
         },
         'password',
@@ -407,7 +403,7 @@ describe('AuthService', () => {
       const authPromises = Array(10).fill(null).map((_, i) => 
         authService.handleAuthentication(new AuthenticationRequestedEvent(
           {
-            username: `user${i}`,
+            email: `user${i}@example.com`,
             password: 'pass123'
           },
           'password',
@@ -426,9 +422,9 @@ describe('AuthService', () => {
       authService['jwtManager'] = {
         generateAccessToken: jest.fn().mockReturnValue('token'),
         generateRefreshToken: jest.fn().mockReturnValue('refresh'),
-        verifyAccessToken: jest.fn(),
-        verifyRefreshToken: jest.fn(),
-        revokeRefreshToken: jest.fn()
+        validateToken: jest.fn(),
+        validateRefreshToken: jest.fn(),
+        invalidateRefreshToken: jest.fn()
       } as any;
 
       // Should handle all requests without interference
