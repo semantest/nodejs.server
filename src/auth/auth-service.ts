@@ -37,6 +37,15 @@ export class AuthService extends Application {
   private rbacManager!: RoleBasedAccessControl;
   private oauth2Manager!: OAuth2Manager;
 
+  constructor() {
+    super();
+    this.jwtManager = new JwtTokenManager();
+    this.apiKeyManager = new ApiKeyManager();
+    this.passwordHashManager = new PasswordHashManager();
+    this.rbacManager = new RoleBasedAccessControl();
+    this.oauth2Manager = new OAuth2Manager();
+  }
+
   /**
    * Handle authentication requests with credentials
    */
