@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { EnterpriseAuthService } from '../enterprise-auth.service';
+import { AuthService } from '../auth-service';
 import { OrganizationManagementService } from '../services/organization-management.service';
 import { TeamManagementService } from '../services/team-management.service';
 import { EnterpriseSSOService } from '../services/enterprise-sso.service';
@@ -29,7 +30,13 @@ describe('EnterpriseAuthService', () => {
     organizationService = new OrganizationManagementService();
     teamService = new TeamManagementService();
     ssoService = new EnterpriseSSOService();
-    enterpriseAuthService = new EnterpriseAuthService();
+    const authService = new AuthService();
+    enterpriseAuthService = new EnterpriseAuthService(
+      authService,
+      organizationService,
+      teamService,
+      ssoService
+    );
   });
 
   afterEach(() => {
@@ -462,8 +469,7 @@ describe('EnterpriseAuthService', () => {
       );
       expect(leadPermission).toBe(true);
 
-      // Team member should have basic team permissions
-      await teamService.addUserToTeam(team.id, user.id, 'team_member');
+      // Team member should have basic team permissions (user already added in beforeEach)
       const memberPermission = await teamService.checkTeamPermission(
         team.id,
         user.id,

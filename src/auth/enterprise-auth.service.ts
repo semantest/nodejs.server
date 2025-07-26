@@ -42,12 +42,17 @@ export class EnterpriseAuthService extends Application {
   private ssoService!: EnterpriseSSOService;
   private auditLogs: Map<string, AuditLogEntry[]> = new Map();
 
-  constructor() {
+  constructor(
+    authService?: AuthService,
+    organizationService?: OrganizationManagementService,
+    teamService?: TeamManagementService,
+    ssoService?: EnterpriseSSOService
+  ) {
     super();
-    this.authService = new AuthService();
-    this.organizationService = new OrganizationManagementService();
-    this.teamService = new TeamManagementService();
-    this.ssoService = new EnterpriseSSOService();
+    this.authService = authService || new AuthService();
+    this.organizationService = organizationService || new OrganizationManagementService();
+    this.teamService = teamService || new TeamManagementService();
+    this.ssoService = ssoService || new EnterpriseSSOService();
   }
 
   /**
