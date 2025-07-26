@@ -8,7 +8,12 @@ Queue manager tests are timing out when run
 - Tests timeout after 2 minutes
 - Need to investigate why tests hang
 
+## Findings (12:42 PM)
+- Tests are failing on `totalProcessed` and `totalFailed` assertions
+- `completeProcessing` and `failProcessing` methods may not be updating counters
+- No infrastructure issues (confirmed by DevOps)
+
 ## Next Steps
-1. Check if there are any infinite loops
-2. Look for missing mocks
-3. Check async handling
+1. Check implementation of completeProcessing/failProcessing methods
+2. Verify status counter updates
+3. Look at the DownloadQueueManager implementation
