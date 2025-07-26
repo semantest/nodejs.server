@@ -131,8 +131,10 @@ describe('AuthService', () => {
             id: 'google-123',
             email: 'test@gmail.com'
           }
-        })
-      };
+        }),
+        getAuthorizationUrl: jest.fn(),
+        refreshToken: jest.fn()
+      } as any;
 
       await authService.handleAuthentication(authEvent);
       
@@ -140,13 +142,17 @@ describe('AuthService', () => {
     });
 
     it('should reject invalid credentials', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {
+      const authEvent = new AuthenticationRequestedEvent(
+        {
           username: 'testuser',
           password: 'wrongpass'
         },
-        authMethod: 'password'
-      });
+        'password',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['passwordHashManager'] = {
         hash: jest.fn(),
@@ -158,10 +164,14 @@ describe('AuthService', () => {
     });
 
     it('should handle unsupported auth methods', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {},
-        authMethod: 'unsupported' as any
-      });
+      const authEvent = new AuthenticationRequestedEvent(
+        {},
+        'unsupported' as any,
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       await expect(authService.handleAuthentication(authEvent)).rejects.toThrow();
     });
@@ -169,47 +179,73 @@ describe('AuthService', () => {
 
   describe('authorization', () => {
     it('should handle authorization requests', async () => {
-      const authzEvent = new AuthorizationRequestedEvent({
-        token: 'valid-jwt-token',
-        resource: '/api/users',
-        action: 'read'
-      });
+      const authzEvent = new AuthorizationRequestedEvent(
+        'valid-jwt-token',
+        ['read'],
+        '/api/users',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+          endpoint: '/api/users'
+        }
+      );
 
       authService['jwtManager'] = {
-        verifyToken: jest.fn().mockResolvedValue({
+        generateAccessToken: jest.fn(),
+        generateRefreshToken: jest.fn(),
+        verifyAccessToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           roles: ['user', 'admin']
-        })
-      };
+        }),
+        verifyRefreshToken: jest.fn(),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       authService['rbacManager'] = {
-        checkPermission: jest.fn().mockResolvedValue(true)
-      };
+        checkPermission: jest.fn().mockResolvedValue(true),
+        getRolesForUser: jest.fn(),
+        getPermissionsForRole: jest.fn(),
+        assignRole: jest.fn(),
+        revokeRole: jest.fn()
+      } as any;
 
       const result = await authService.handleAuthorization(authzEvent);
       
-      expect(authService['jwtManager'].verifyToken).toHaveBeenCalledWith('valid-jwt-token');
+      expect(authService['jwtManager'].verifyAccessToken).toHaveBeenCalledWith('valid-jwt-token');
       expect(authService['rbacManager'].checkPermission).toHaveBeenCalled();
       expect(result.authorized).toBe(true);
     });
 
     it('should deny unauthorized access', async () => {
-      const authzEvent = new AuthorizationRequestedEvent({
-        token: 'valid-jwt-token',
-        resource: '/api/admin',
-        action: 'delete'
-      });
+      const authzEvent = new AuthorizationRequestedEvent(
+        'valid-jwt-token',
+        ['delete'],
+        '/api/admin',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+          endpoint: '/api/admin'
+        }
+      );
 
       authService['jwtManager'] = {
-        verifyToken: jest.fn().mockResolvedValue({
+        generateAccessToken: jest.fn(),
+        generateRefreshToken: jest.fn(),
+        verifyAccessToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           roles: ['user']
-        })
-      };
+        }),
+        verifyRefreshToken: jest.fn(),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       authService['rbacManager'] = {
-        checkPermission: jest.fn().mockResolvedValue(false)
-      };
+        checkPermission: jest.fn().mockResolvedValue(false),
+        getRolesForUser: jest.fn(),
+        getPermissionsForRole: jest.fn(),
+        assignRole: jest.fn(),
+        revokeRole: jest.fn()
+      } as any;
 
       const result = await authService.handleAuthorization(authzEvent);
       
@@ -217,15 +253,24 @@ describe('AuthService', () => {
     });
 
     it('should handle invalid tokens', async () => {
-      const authzEvent = new AuthorizationRequestedEvent({
-        token: 'invalid-token',
-        resource: '/api/users',
-        action: 'read'
-      });
+      const authzEvent = new AuthorizationRequestedEvent(
+        'invalid-token',
+        ['read'],
+        '/api/users',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+          endpoint: '/api/users'
+        }
+      );
 
       authService['jwtManager'] = {
-        verifyToken: jest.fn().mockRejectedValue(new Error('Invalid token'))
-      };
+        generateAccessToken: jest.fn(),
+        generateRefreshToken: jest.fn(),
+        verifyAccessToken: jest.fn().mockRejectedValue(new Error('Invalid token')),
+        verifyRefreshToken: jest.fn(),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       await expect(authService.handleAuthorization(authzEvent)).rejects.toThrow('Invalid token');
     });
@@ -233,39 +278,51 @@ describe('AuthService', () => {
 
   describe('token refresh', () => {
     it('should handle token refresh requests', async () => {
-      const refreshEvent = new TokenRefreshRequestedEvent({
-        refreshToken: 'valid-refresh-token'
-      });
+      const refreshEvent = new TokenRefreshRequestedEvent(
+        'valid-refresh-token',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['jwtManager'] = {
+        generateAccessToken: jest.fn().mockReturnValue('new-access-token'),
+        generateRefreshToken: jest.fn().mockReturnValue('new-refresh-token'),
+        verifyAccessToken: jest.fn(),
         verifyRefreshToken: jest.fn().mockResolvedValue({
           userId: 'user-123',
           tokenId: 'token-123'
         }),
-        generateTokenPair: jest.fn().mockResolvedValue({
-          accessToken: 'new-access-token',
-          refreshToken: 'new-refresh-token'
-        }),
-        revokeToken: jest.fn().mockResolvedValue(true)
-      };
+        revokeRefreshToken: jest.fn().mockResolvedValue(true)
+      } as any;
 
       const result = await authService.handleTokenRefresh(refreshEvent);
       
       expect(authService['jwtManager'].verifyRefreshToken).toHaveBeenCalledWith('valid-refresh-token');
-      expect(authService['jwtManager'].generateTokenPair).toHaveBeenCalled();
-      expect(authService['jwtManager'].revokeToken).toHaveBeenCalledWith('token-123');
+      expect(authService['jwtManager'].generateAccessToken).toHaveBeenCalled();
+      expect(authService['jwtManager'].generateRefreshToken).toHaveBeenCalled();
+      expect(authService['jwtManager'].revokeRefreshToken).toHaveBeenCalledWith('token-123');
       expect(result.accessToken).toBe('new-access-token');
       expect(result.refreshToken).toBe('new-refresh-token');
     });
 
     it('should reject invalid refresh tokens', async () => {
-      const refreshEvent = new TokenRefreshRequestedEvent({
-        refreshToken: 'invalid-refresh-token'
-      });
+      const refreshEvent = new TokenRefreshRequestedEvent(
+        'invalid-refresh-token',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['jwtManager'] = {
-        verifyRefreshToken: jest.fn().mockRejectedValue(new Error('Invalid refresh token'))
-      };
+        generateAccessToken: jest.fn(),
+        generateRefreshToken: jest.fn(),
+        verifyAccessToken: jest.fn(),
+        verifyRefreshToken: jest.fn().mockRejectedValue(new Error('Invalid refresh token')),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       await expect(authService.handleTokenRefresh(refreshEvent)).rejects.toThrow('Invalid refresh token');
     });
