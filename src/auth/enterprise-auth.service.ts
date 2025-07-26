@@ -362,8 +362,10 @@ export class EnterpriseAuthService extends Application {
       const ssoConfig = await this.ssoService.createSSOConfiguration(data);
       
       // Update organization settings
+      const org = await this.organizationService.getOrganization(data.organizationId);
       await this.organizationService.updateOrganization(data.organizationId, {
         settings: {
+          ...org.settings,
           ssoEnabled: true,
           ssoProvider: data.provider
         }

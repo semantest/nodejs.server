@@ -49,25 +49,32 @@ describe('AuthService', () => {
 
   describe('authentication', () => {
     it('should handle password authentication', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {
+      const authEvent = new AuthenticationRequestedEvent(
+        {
           username: 'testuser',
           password: 'testpass123'
         },
-        authMethod: 'password'
-      });
+        'password',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       // Mock password hash manager
       authService['passwordHashManager'] = {
-        verify: jest.fn().mockResolvedValue(true)
-      };
+        hash: jest.fn(),
+        verifyPassword: jest.fn().mockResolvedValue(true),
+        needsRehash: jest.fn().mockReturnValue(false)
+      } as any;
 
       authService['jwtManager'] = {
-        generateTokenPair: jest.fn().mockResolvedValue({
-          accessToken: 'mock-access-token',
-          refreshToken: 'mock-refresh-token'
-        })
-      };
+        generateAccessToken: jest.fn().mockReturnValue('mock-access-token'),
+        generateRefreshToken: jest.fn().mockReturnValue('mock-refresh-token'),
+        verifyAccessToken: jest.fn(),
+        verifyRefreshToken: jest.fn(),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       await authService.handleAuthentication(authEvent);
       
@@ -76,20 +83,28 @@ describe('AuthService', () => {
     });
 
     it('should handle API key authentication', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {
+      const authEvent = new AuthenticationRequestedEvent(
+        {
           apiKey: 'test-api-key-123'
         },
-        authMethod: 'apiKey'
-      });
+        'apiKey',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['apiKeyManager'] = {
+        keyPrefix: 'sk_test_',
+        keyLength: 32,
         validateApiKey: jest.fn().mockResolvedValue({
           id: 'key-123',
           name: 'Test Key',
           permissions: ['read', 'write']
-        })
-      };
+        }),
+        createApiKey: jest.fn(),
+        checkRateLimit: jest.fn()
+      } as any;
 
       await authService.handleAuthentication(authEvent);
       
@@ -97,13 +112,17 @@ describe('AuthService', () => {
     });
 
     it('should handle OAuth2 authentication', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {
+      const authEvent = new AuthenticationRequestedEvent(
+        {
           code: 'oauth-code-123',
           provider: 'google'
         },
-        authMethod: 'oauth2'
-      });
+        'oauth2',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['oauth2Manager'] = {
         exchangeCodeForToken: jest.fn().mockResolvedValue({
@@ -130,8 +149,10 @@ describe('AuthService', () => {
       });
 
       authService['passwordHashManager'] = {
-        verify: jest.fn().mockResolvedValue(false)
-      };
+        hash: jest.fn(),
+        verifyPassword: jest.fn().mockResolvedValue(false),
+        needsRehash: jest.fn().mockReturnValue(false)
+      } as any;
 
       await expect(authService.handleAuthentication(authEvent)).rejects.toThrow();
     });
@@ -253,17 +274,23 @@ describe('AuthService', () => {
   describe('security features', () => {
     it('should implement rate limiting for auth attempts', async () => {
       // Simulate multiple failed auth attempts
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {
+      const authEvent = new AuthenticationRequestedEvent(
+        {
           username: 'testuser',
           password: 'wrongpass'
         },
-        authMethod: 'password'
-      });
+        'password',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       authService['passwordHashManager'] = {
-        verify: jest.fn().mockResolvedValue(false)
-      };
+        hash: jest.fn(),
+        verifyPassword: jest.fn().mockResolvedValue(false),
+        needsRehash: jest.fn().mockReturnValue(false)
+      } as any;
 
       // Should track failed attempts
       for (let i = 0; i < 5; i++) {
@@ -282,6 +309,8 @@ describe('AuthService', () => {
       const apiKey = 'sk_test_123456789';
       
       authService['apiKeyManager'] = {
+        keyPrefix: 'sk_test_',
+        keyLength: 32,
         createApiKey: jest.fn().mockImplementation((key) => {
           expect(key).not.toBe(apiKey); // Should be hashed
           return Promise.resolve({
@@ -289,44 +318,61 @@ describe('AuthService', () => {
             hashedKey: 'hashed-version',
             prefix: 'sk_test_'
           });
-        })
-      };
+        }),
+        validateApiKey: jest.fn(),
+        checkRateLimit: jest.fn()
+      } as any;
 
-      await authService.createApiKey('Test Key', ['read']);
+      await authService.createApiKey('Test Key', {
+        name: 'Test Key',
+        scopes: ['read'],
+        tier: 'free'
+      });
       expect(authService['apiKeyManager'].createApiKey).toHaveBeenCalled();
     });
   });
 
   describe('edge cases', () => {
     it('should handle missing credentials gracefully', async () => {
-      const authEvent = new AuthenticationRequestedEvent({
-        credentials: {},
-        authMethod: 'password'
-      });
+      const authEvent = new AuthenticationRequestedEvent(
+        {},
+        'password',
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent'
+        }
+      );
 
       await expect(authService.handleAuthentication(authEvent)).rejects.toThrow(/credentials/i);
     });
 
     it('should handle concurrent auth requests', async () => {
       const authPromises = Array(10).fill(null).map((_, i) => 
-        authService.handleAuthentication(new AuthenticationRequestedEvent({
-          credentials: {
+        authService.handleAuthentication(new AuthenticationRequestedEvent(
+          {
             username: `user${i}`,
             password: 'pass123'
           },
-          authMethod: 'password'
-        }))
+          'password',
+          {
+            ipAddress: '127.0.0.1',
+            userAgent: 'test-agent'
+          }
+        ))
       );
 
       authService['passwordHashManager'] = {
-        verify: jest.fn().mockResolvedValue(true)
-      };
+        hash: jest.fn(),
+        verifyPassword: jest.fn().mockResolvedValue(true),
+        needsRehash: jest.fn().mockReturnValue(false)
+      } as any;
       authService['jwtManager'] = {
-        generateTokenPair: jest.fn().mockResolvedValue({
-          accessToken: 'token',
-          refreshToken: 'refresh'
-        })
-      };
+        generateAccessToken: jest.fn().mockReturnValue('token'),
+        generateRefreshToken: jest.fn().mockReturnValue('refresh'),
+        verifyAccessToken: jest.fn(),
+        verifyRefreshToken: jest.fn(),
+        revokeRefreshToken: jest.fn()
+      } as any;
 
       // Should handle all requests without interference
       const results = await Promise.allSettled(authPromises);
