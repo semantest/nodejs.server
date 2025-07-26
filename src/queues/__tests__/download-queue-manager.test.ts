@@ -20,10 +20,7 @@ describe('DownloadQueueManager', () => {
   afterEach(() => {
     // Clean up any listeners and stop processing
     queueManager.removeAllListeners();
-    // @ts-ignore - accessing private for cleanup
-    if (queueManager['processingInterval']) {
-      clearInterval(queueManager['processingInterval']);
-    }
+    queueManager.stopProcessing();
   });
 
   describe('enqueue', () => {
@@ -144,25 +141,93 @@ describe('DownloadQueueManager', () => {
     it('should handle manual completion', async () => {
       // Arrange
       const item = await queueManager.enqueue({ url: 'https://example.com/process.jpg' });
+      
+      // Create a queue manager that can process items
+      const processingQueueManager = new DownloadQueueManager({
+        maxConcurrent: 1,
+        rateLimit: 5,
+        processingTimeout: 1000
+      });
 
-      // Act - simulate external processing completion
-      queueManager.completeProcessing(item.id, { downloadedPath: '/tmp/process.jpg' });
+      // Set up processing handler
+      let processedItem: any;
+      processingQueueManager.on('queue:process', (queueItem) => {
+        // Simulate external processor completing the item
+        setTimeout(() => {
+          processingQueueManager.completeProcessing(queueItem.id, { downloadedPath: '/tmp/process.jpg' });
+        }, 50);
+      });
+
+      processingQueueManager.on('queue:item:completed', (completedItem) => {
+        processedItem = completedItem;
+      });
+
+      // Act - enqueue and wait for processing
+      await processingQueueManager.enqueue({ url: 'https://example.com/process.jpg' });
+      
+      // Wait for processing to complete
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Assert
-      const status = queueManager.getStatus();
+      const status = processingQueueManager.getStatus();
       expect(status.totalProcessed).toBe(1);
+      expect(processedItem).toBeDefined();
+      expect(processedItem.status).toBe('completed');
+      
+      // Clean up
+      processingQueueManager.removeAllListeners();
+      processingQueueManager.stopProcessing();
     });
 
     it('should handle manual failure', async () => {
       // Arrange
-      const item = await queueManager.enqueue({ url: 'https://example.com/fail.jpg' });
+      const processingQueueManager = new DownloadQueueManager({
+        maxConcurrent: 1,
+        rateLimit: 5,
+        processingTimeout: 1000,
+        dlqThreshold: 1, // Set to 1 so it goes to DLQ after first failure
+        retryDelays: [] // No retries
+      });
 
-      // Act - simulate external processing failure
-      queueManager.failProcessing(item.id, new Error('Download failed'));
+      // Stop the processing loop to prevent continuous retries
+      processingQueueManager.stopProcessing();
+
+      // Set up processing handler
+      let failedItem: any;
+      let dlqItem: any;
+      
+      processingQueueManager.on('queue:process', (queueItem) => {
+        // Simulate external processor failing the item
+        setTimeout(() => {
+          processingQueueManager.failProcessing(queueItem.id, new Error('Download failed'));
+        }, 50);
+      });
+
+      processingQueueManager.on('queue:item:dlq', (deadItem) => {
+        dlqItem = deadItem;
+      });
+
+      // Act - enqueue and manually trigger processing
+      const item = await processingQueueManager.enqueue({ url: 'https://example.com/fail.jpg' });
+      
+      // Manually trigger processing once
+      // @ts-ignore - accessing private method for test
+      await processingQueueManager.processNext();
+      
+      // Wait for processing to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Assert
-      const status = queueManager.getStatus();
+      const status = processingQueueManager.getStatus();
       expect(status.totalFailed).toBe(1);
+      expect(status.totalInDLQ).toBe(1);
+      expect(dlqItem).toBeDefined();
+      expect(dlqItem.status).toBe('dead');
+      expect(dlqItem.attempts).toBe(1);
+      
+      // Clean up
+      processingQueueManager.removeAllListeners();
+      processingQueueManager.stopProcessing();
     });
   });
 

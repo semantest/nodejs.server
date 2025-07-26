@@ -13,7 +13,19 @@ Queue manager tests are timing out when run
 - `completeProcessing` and `failProcessing` methods may not be updating counters
 - No infrastructure issues (confirmed by DevOps)
 
-## Next Steps
-1. Check implementation of completeProcessing/failProcessing methods
-2. Verify status counter updates
-3. Look at the DownloadQueueManager implementation
+## Root Cause Found (12:44 PM)
+- `completeProcessing` only emits events: `process:${id}:complete`
+- Counter updates happen in `processQueue` method after `waitForProcessing` resolves
+- The test expects counters to update immediately after calling `completeProcessing`
+- But the item needs to be in "processing" state first!
+
+## Solution
+1. Need to trigger processing before calling completeProcessing
+2. Or modify test to use the queue's natural flow
+3. Or add direct counter updates in completeProcessing (but that breaks separation)
+
+## FIXED (1:05 PM)
+- Modified tests to use natural queue processing flow
+- Added `stopProcessing()` method to DownloadQueueManager for proper cleanup
+- Tests now properly set up event handlers and wait for processing
+- All 11 queue manager tests are now passing!

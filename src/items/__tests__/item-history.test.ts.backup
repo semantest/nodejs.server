@@ -5,81 +5,26 @@
 
 import request from 'supertest';
 import express, { Express } from 'express';
-import { ItemEntity } from '../domain/entities/item.entity';
-import { ItemService } from '../application/services/item.service';
+import { itemRouter } from '../infrastructure/http/item.routes';
 import { InMemoryItemRepository } from '../infrastructure/repositories/in-memory-item.repository';
+import { ItemService } from '../application/services/item.service';
+import { ItemEntity } from '../domain/entities/item.entity';
 
 describe('Item History Endpoint', () => {
   let app: Express;
+  let repository: InMemoryItemRepository;
+  let service: ItemService;
   let testItemId: string;
-  let itemService: ItemService;
-  let itemRepository: InMemoryItemRepository;
 
   beforeEach(async () => {
-    // Create a new repository instance for each test
-    itemRepository = new InMemoryItemRepository();
-    itemService = new ItemService(itemRepository);
-    
-    // Create Express app with custom route handlers that use our test instances
+    // Create Express app
     app = express();
     app.use(express.json());
-    
-    // Register routes with our test service
-    app.get('/api/item/:item_id/history', async (req, res) => {
-      try {
-        const { item_id } = req.params;
-        const { start_date, end_date, action } = req.query;
+    app.use('/api', itemRouter);
 
-        // Get full history
-        const historyResponse = await itemService.getItemHistory(item_id);
-
-        if (!historyResponse) {
-          return res.status(404).json({
-            error: 'Item not found',
-            itemId: item_id,
-            timestamp: new Date().toISOString()
-          });
-        }
-
-        // Apply filters if provided
-        let filteredHistory = historyResponse.history;
-
-        // Filter by date range
-        if (start_date || end_date) {
-          const startDate = start_date ? new Date(start_date as string) : new Date(0);
-          const endDate = end_date ? new Date(end_date as string) : new Date();
-
-          filteredHistory = await itemService.getItemHistoryByDateRange(
-            item_id,
-            startDate,
-            endDate
-          );
-        }
-
-        // Filter by action
-        if (action && ['created', 'updated', 'deleted', 'status_changed'].includes(action as string)) {
-          filteredHistory = await itemService.getItemHistoryByAction(
-            item_id,
-            action as any
-          );
-        }
-
-        res.json({
-          itemId: item_id,
-          currentState: historyResponse.currentState,
-          history: filteredHistory,
-          totalChanges: filteredHistory.length,
-          filters: {
-            startDate: start_date || null,
-            endDate: end_date || null,
-            action: action || null
-          },
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
+    // Initialize repository and service
+    repository = new InMemoryItemRepository();
+    service = new ItemService(repository);
 
     // Create test item with some history
     const testItem = new ItemEntity({
@@ -91,31 +36,31 @@ describe('Item History Endpoint', () => {
     testItemId = testItem.id;
 
     // Save initial item
-    await itemRepository.save(testItem.toJSON());
+    await repository.save(testItem.toJSON());
     const initialHistory = testItem.getHistory();
     for (const entry of initialHistory) {
-      await itemRepository.saveHistoryEntry(entry);
+      await repository.saveHistoryEntry(entry);
     }
 
     // Simulate some updates
     testItem.update({ description: 'Updated description' }, 'user-123');
-    await itemRepository.update(testItemId, testItem.toJSON());
+    await repository.update(testItemId, testItem.toJSON());
     const updateHistory = testItem.getHistory();
     if (updateHistory.length > 1) {
-      await itemRepository.saveHistoryEntry(updateHistory[updateHistory.length - 1]);
+      await repository.saveHistoryEntry(updateHistory[updateHistory.length - 1]);
     }
 
     // Change status
     testItem.changeStatus('inactive', 'user-456');
-    await itemRepository.update(testItemId, testItem.toJSON());
+    await mockRepository.update(testItemId, testItem.toJSON());
     const statusHistory = testItem.getHistory();
     if (statusHistory.length > 2) {
-      await itemRepository.saveHistoryEntry(statusHistory[statusHistory.length - 1]);
+      await mockRepository.saveHistoryEntry(statusHistory[statusHistory.length - 1]);
     }
   });
 
   afterEach(() => {
-    itemRepository.clear();
+    jest.clearAllMocks();
   });
 
   describe('GET /api/item/:item_id/history', () => {
@@ -128,8 +73,18 @@ describe('Item History Endpoint', () => {
       expect(response.body).toHaveProperty('currentState');
       expect(response.body).toHaveProperty('history');
       expect(response.body).toHaveProperty('totalChanges');
+      expect(response.body).toHaveProperty('timestamp');
+
+      expect(response.body.currentState).toMatchObject({
+        id: testItemId,
+        name: 'Test Item',
+        description: 'Updated description',
+        status: 'inactive'
+      });
+
       expect(response.body.history).toBeInstanceOf(Array);
-      expect(response.body.history.length).toBeGreaterThan(0);
+      expect(response.body.history.length).toBe(3);
+      expect(response.body.totalChanges).toBe(3);
     });
 
     it('should return 404 for non-existent item', async () => {
@@ -138,6 +93,7 @@ describe('Item History Endpoint', () => {
         .expect(404);
 
       expect(response.body).toHaveProperty('error', 'Item not found');
+      expect(response.body).toHaveProperty('itemId', 'non-existent-id');
     });
 
     it('should return history entries in reverse chronological order', async () => {
@@ -147,12 +103,10 @@ describe('Item History Endpoint', () => {
 
       const { history } = response.body;
       
-      // Check that history is in reverse chronological order
-      for (let i = 1; i < history.length; i++) {
-        const current = new Date(history[i].timestamp);
-        const previous = new Date(history[i - 1].timestamp);
-        expect(previous.getTime()).toBeGreaterThanOrEqual(current.getTime());
-      }
+      // Most recent first
+      expect(history[0].action).toBe('status_changed');
+      expect(history[1].action).toBe('updated');
+      expect(history[2].action).toBe('created');
     });
 
     it('should include change details in history entries', async () => {
@@ -162,23 +116,29 @@ describe('Item History Endpoint', () => {
 
       const { history } = response.body;
       
-      // Find the update entry
+      // Check update entry
       const updateEntry = history.find((h: any) => h.action === 'updated');
       expect(updateEntry).toBeDefined();
-      expect(updateEntry).toHaveProperty('changes');
       expect(updateEntry.changes).toHaveProperty('description');
-      expect(updateEntry.changes.description).toEqual({
+      expect(updateEntry.changes.description).toMatchObject({
         from: 'Initial description',
         to: 'Updated description'
+      });
+
+      // Check status change entry
+      const statusEntry = history.find((h: any) => h.action === 'status_changed');
+      expect(statusEntry).toBeDefined();
+      expect(statusEntry.changes).toHaveProperty('status');
+      expect(statusEntry.changes.status).toMatchObject({
+        from: 'active',
+        to: 'inactive'
       });
     });
 
     it('should filter history by date range', async () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
       const response = await request(app)
         .get(`/api/item/${testItemId}/history`)
@@ -191,7 +151,8 @@ describe('Item History Endpoint', () => {
       expect(response.body.history).toBeInstanceOf(Array);
       expect(response.body.filters).toMatchObject({
         startDate: yesterday.toISOString(),
-        endDate: tomorrow.toISOString()
+        endDate: tomorrow.toISOString(),
+        action: null
       });
     });
 
@@ -204,7 +165,9 @@ describe('Item History Endpoint', () => {
       expect(response.body.history).toBeInstanceOf(Array);
       expect(response.body.history.length).toBe(1);
       expect(response.body.history[0].action).toBe('status_changed');
-      expect(response.body.filters.action).toBe('status_changed');
+      expect(response.body.filters).toMatchObject({
+        action: 'status_changed'
+      });
     });
 
     it('should handle invalid action filter gracefully', async () => {
@@ -215,7 +178,7 @@ describe('Item History Endpoint', () => {
 
       // Should return full history when action is invalid
       expect(response.body.history).toBeInstanceOf(Array);
-      expect(response.body.history.length).toBeGreaterThan(1);
+      expect(response.body.history.length).toBe(3);
     });
 
     it('should include user information in history entries', async () => {
@@ -225,12 +188,11 @@ describe('Item History Endpoint', () => {
 
       const { history } = response.body;
       
-      // Check user information in entries
       const updateEntry = history.find((h: any) => h.action === 'updated');
-      expect(updateEntry).toHaveProperty('userId', 'user-123');
-      
+      expect(updateEntry.userId).toBe('user-123');
+
       const statusEntry = history.find((h: any) => h.action === 'status_changed');
-      expect(statusEntry).toHaveProperty('userId', 'user-456');
+      expect(statusEntry.userId).toBe('user-456');
     });
 
     it('should include previous and new state in history entries', async () => {
@@ -240,27 +202,26 @@ describe('Item History Endpoint', () => {
 
       const { history } = response.body;
       
-      const statusEntry = history.find((h: any) => h.action === 'status_changed');
-      expect(statusEntry).toBeDefined();
-      expect(statusEntry.changes).toHaveProperty('status');
-      expect(statusEntry.changes.status).toEqual({
-        from: 'active',
-        to: 'inactive'
-      });
+      const updateEntry = history.find((h: any) => h.action === 'updated');
+      expect(updateEntry).toHaveProperty('previousState');
+      expect(updateEntry).toHaveProperty('newState');
+      expect(updateEntry.previousState.description).toBe('Initial description');
+      expect(updateEntry.newState.description).toBe('Updated description');
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle item with no history beyond creation', async () => {
+      // Create new item without updates
       const newItem = new ItemEntity({
         name: 'New Item',
         description: 'No updates yet'
       });
 
-      await itemRepository.save(newItem.toJSON());
+      await repository.save(newItem.toJSON());
       const history = newItem.getHistory();
       for (const entry of history) {
-        await itemRepository.saveHistoryEntry(entry);
+        await repository.saveHistoryEntry(entry);
       }
 
       const response = await request(app)
@@ -272,16 +233,14 @@ describe('Item History Endpoint', () => {
     });
 
     it('should handle deleted items', async () => {
-      // Get the test item
-      const item = await itemRepository.findById(testItemId);
+      // Delete the test item
+      const item = await repository.findById(testItemId);
       if (item) {
         const entity = ItemEntity.fromJSON(item);
         entity.delete('user-789');
-        await itemRepository.update(testItemId, entity.toJSON());
+        await repository.delete(testItemId);
         const deleteHistory = entity.getHistory();
-        if (deleteHistory.length > 0) {
-          await itemRepository.saveHistoryEntry(deleteHistory[deleteHistory.length - 1]);
-        }
+        await repository.saveHistoryEntry(deleteHistory[deleteHistory.length - 1]);
       }
 
       const response = await request(app)
@@ -289,37 +248,7 @@ describe('Item History Endpoint', () => {
         .expect(200);
 
       expect(response.body.currentState.status).toBe('archived');
-      // History is in reverse chronological order, so find the deleted action
-      const deletedEntry = response.body.history.find((h: any) => h.action === 'deleted');
-      expect(deletedEntry).toBeDefined();
-      expect(deletedEntry.action).toBe('deleted');
-    });
-
-    it('should handle empty query parameters', async () => {
-      const response = await request(app)
-        .get(`/api/item/${testItemId}/history`)
-        .query({})
-        .expect(200);
-
-      expect(response.body.filters).toEqual({
-        startDate: null,
-        endDate: null,
-        action: null
-      });
-    });
-
-    it('should handle malformed date parameters', async () => {
-      const response = await request(app)
-        .get(`/api/item/${testItemId}/history`)
-        .query({
-          start_date: 'invalid-date',
-          end_date: 'also-invalid'
-        })
-        .expect(200);
-
-      // Should still return results, but dates might be parsed as Invalid Date
-      expect(response.body).toHaveProperty('history');
-      expect(response.body.filters.startDate).toBe('invalid-date');
+      expect(response.body.history[0].action).toBe('deleted');
     });
   });
 });

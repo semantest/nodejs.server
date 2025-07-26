@@ -27,6 +27,8 @@ export class DownloadQueueManager extends EventEmitter {
   private isProcessing = false;
   private metrics: QueueMetrics;
   private rateLimiter: { tokens: number; lastRefill: number };
+  private processingInterval?: NodeJS.Timeout;
+  private rateInterval?: NodeJS.Timeout;
 
   constructor(config?: Partial<QueueConfig>) {
     super();
@@ -343,12 +345,12 @@ export class DownloadQueueManager extends EventEmitter {
    * Start continuous processing loop
    */
   private startProcessingLoop(): void {
-    setInterval(() => {
+    this.processingInterval = setInterval(() => {
       this.processNext();
     }, 1000);
 
     // Update current rate metric
-    setInterval(() => {
+    this.rateInterval = setInterval(() => {
       const processed = this.metrics.totalProcessed;
       setTimeout(() => {
         this.metrics.currentRate = this.metrics.totalProcessed - processed;
@@ -399,5 +401,19 @@ export class DownloadQueueManager extends EventEmitter {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Stop processing (for testing)
+   */
+  stopProcessing(): void {
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
+      this.processingInterval = undefined;
+    }
+    if (this.rateInterval) {
+      clearInterval(this.rateInterval);
+      this.rateInterval = undefined;
+    }
   }
 }
