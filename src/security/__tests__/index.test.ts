@@ -3,14 +3,8 @@
  * Testing security initialization and route setup
  */
 
-import { initializeEnterpriseSecurityModule, shutdownEnterpriseSecurityModule } from '../index';
-import { Express } from 'express';
-import { incidentResponseService } from '../incident-response.service';
-import { complianceFrameworkService } from '../compliance-framework.service';
-import { vulnerabilityScanner } from '../vulnerability-scanner.service';
-import { logger } from '../../monitoring/infrastructure/structured-logger';
-
-// Mock all dependencies
+// Mock all dependencies first
+jest.mock('../audit-service');
 jest.mock('../incident-response.service');
 jest.mock('../compliance-framework.service');
 jest.mock('../vulnerability-scanner.service');
@@ -22,6 +16,13 @@ jest.mock('../../monitoring/infrastructure/structured-logger', () => ({
     debug: jest.fn()
   }
 }));
+
+import { initializeEnterpriseSecurityModule, shutdownEnterpriseSecurityModule } from '../index';
+import { Express } from 'express';
+import { incidentResponseService } from '../incident-response.service';
+import { complianceFrameworkService } from '../compliance-framework.service';
+import { vulnerabilityScanner } from '../vulnerability-scanner.service';
+import { logger } from '../../monitoring/infrastructure/structured-logger';
 
 describe('Enterprise Security Module', () => {
   let mockApp: Express;
