@@ -392,7 +392,7 @@ describe('MonitoringSystem', () => {
       
       // Mock process methods
       process.on = jest.fn();
-      process.exit = jest.fn();
+      process.exit = jest.fn() as any;
     });
 
     afterEach(() => {
