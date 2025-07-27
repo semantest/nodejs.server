@@ -111,8 +111,9 @@ describe('AI Tool Queue Integration', () => {
       const item = await queueManager.enqueue(payload);
       
       // Simulate the item being processed with max attempts already reached
-      // @ts-ignore - Accessing private property for testing
-      item.attempts = 2; // Set to dlqThreshold - 1, so next failure will trigger DLQ
+      item.attempts = 2; // Set to dlqThreshold - 1 (3-1=2), so next failure will trigger DLQ
+      item.maxAttempts = 3; // Ensure maxAttempts matches dlqThreshold
+      // @ts-ignore - Accessing private property for testing  
       queueManager.processing.set(item.id, item);
 
       // Simulate failure handling
