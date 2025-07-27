@@ -110,8 +110,9 @@ describe('AI Tool Queue Integration', () => {
       // Act
       const item = await queueManager.enqueue(payload);
       
-      // Simulate the item being processed
+      // Simulate the item being processed with max attempts already reached
       // @ts-ignore - Accessing private property for testing
+      item.attempts = 2; // Set to dlqThreshold - 1, so next failure will trigger DLQ
       queueManager.processing.set(item.id, item);
 
       // Simulate failure handling
@@ -120,7 +121,7 @@ describe('AI Tool Queue Integration', () => {
       // Assert
       const status = queueManager.getStatus();
       expect(status.totalFailed).toBe(1);
-      expect(status.totalInDLQ).toBe(1); // Should be in DLQ since attempts >= maxRetries
+      expect(status.totalInDLQ).toBe(1); // Should be in DLQ since attempts >= dlqThreshold
     });
   });
 });
