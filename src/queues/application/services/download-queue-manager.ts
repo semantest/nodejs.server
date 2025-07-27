@@ -293,6 +293,34 @@ export class DownloadQueueManager extends EventEmitter {
    * Fail processing of an item (called by external processor)
    */
   failProcessing(id: string, error: Error): void {
+    const item = this.processing.get(id);
+    if (item) {
+      // Update metrics
+      this.metrics.totalFailed++;
+      
+      // Handle retry or DLQ logic
+      item.attempts++;
+      if (item.attempts >= this.config.dlqThreshold) {
+        // Move to DLQ
+        item.status = 'dead';
+        this.dlq.push(item);
+        this.metrics.totalInDLQ++;
+        this.emit('queue:item:dlq', item);
+      } else {
+        // Retry with backoff
+        item.status = 'pending';
+        item.nextRetryAt = new Date(
+          Date.now() + this.config.retryDelays[item.attempts - 1] || 30000
+        );
+        this.queues[item.priority].push(item);
+        this.emit('queue:item:retry', item);
+      }
+      
+      // Remove from processing
+      this.processing.delete(id);
+      this.updateQueueSizes();
+    }
+    
     this.emit(`process:${id}:error`, error);
   }
 

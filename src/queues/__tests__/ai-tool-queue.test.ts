@@ -109,14 +109,18 @@ describe('AI Tool Queue Integration', () => {
 
       // Act
       const item = await queueManager.enqueue(payload);
+      
+      // Simulate the item being processed
+      // @ts-ignore - Accessing private property for testing
+      queueManager.processing.set(item.id, item);
 
       // Simulate failure handling
       queueManager.failProcessing(item.id, new Error('Max activation attempts reached'));
 
       // Assert
-      // In a real implementation, this would move to DLQ
       const status = queueManager.getStatus();
       expect(status.totalFailed).toBe(1);
+      expect(status.totalInDLQ).toBe(1); // Should be in DLQ since attempts >= maxRetries
     });
   });
 });
