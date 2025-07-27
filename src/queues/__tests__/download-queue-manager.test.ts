@@ -182,21 +182,23 @@ describe('DownloadQueueManager', () => {
     it('should handle manual failure', async () => {
       // Arrange
       const processingQueueManager = new DownloadQueueManager({
-        maxConcurrent: 1,
+        maxConcurrent: 0, // Set to 0 to prevent automatic processing on enqueue
         rateLimit: 5,
         processingTimeout: 1000,
         dlqThreshold: 1, // Set to 1 so it goes to DLQ after first failure
         retryDelays: [] // No retries
       });
 
-      // Stop the processing loop to prevent continuous retries
+      // Stop the processing loop to prevent automatic interval processing
       processingQueueManager.stopProcessing();
 
       // Set up processing handler
       let failedItem: any;
       let dlqItem: any;
       
+      let processEventCalled = false;
       processingQueueManager.on('queue:process', (queueItem) => {
+        processEventCalled = true;
         // Simulate external processor failing the item
         setTimeout(() => {
           processingQueueManager.failProcessing(queueItem.id, new Error('Download failed'));
@@ -210,7 +212,7 @@ describe('DownloadQueueManager', () => {
       // Act - enqueue and manually trigger processing
       const item = await processingQueueManager.enqueue({ url: 'https://example.com/fail.jpg' });
       
-      // Manually trigger processing once
+      // Manually trigger processing once (since maxConcurrent = 0 and interval is stopped)
       // @ts-ignore - accessing private method for test
       await processingQueueManager.processNext();
       
@@ -219,6 +221,11 @@ describe('DownloadQueueManager', () => {
 
       // Assert
       const status = processingQueueManager.getStatus();
+      console.log('Test debug - processEventCalled:', processEventCalled);
+      console.log('Test debug - status:', JSON.stringify(status, null, 2));
+      console.log('Test debug - dlqItem:', dlqItem);
+      
+      expect(processEventCalled).toBe(true);
       expect(status.totalFailed).toBe(1);
       expect(status.totalInDLQ).toBe(1);
       expect(dlqItem).toBeDefined();
