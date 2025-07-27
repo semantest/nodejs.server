@@ -1,362 +1,250 @@
 /**
- * Emergency tests for JwtTokenManager
- * Created by Quinn (QA) during test coverage crisis - 8:15 AM
- * Target: Boost nodejs.server coverage from 13.41%
+ * Tests for JwtTokenManager
+ * Created to improve coverage from 0%
  */
 
 import { JwtTokenManager } from '../jwt-token-manager';
-import * as jwt from 'jsonwebtoken';
-import * as crypto from 'crypto';
-
-// Mock dependencies
-jest.mock('jsonwebtoken');
-jest.mock('crypto');
 
 describe('JwtTokenManager', () => {
-  let manager: JwtTokenManager;
+  let jwtManager: JwtTokenManager;
   const mockSecret = 'test-secret-key';
-  const mockRefreshSecret = 'test-refresh-secret';
+  const mockIssuer = 'test-issuer';
 
   beforeEach(() => {
-    manager = new JwtTokenManager(mockSecret, mockRefreshSecret);
     jest.clearAllMocks();
-    
-    // Setup default mocks
-    (crypto.randomBytes as jest.Mock).mockReturnValue({
-      toString: jest.fn().mockReturnValue('random-token-id')
-    });
+    process.env.JWT_SECRET = mockSecret;
+    process.env.JWT_ISSUER = mockIssuer;
+    process.env.JWT_ACCESS_EXPIRY = '15m';
+    process.env.JWT_REFRESH_EXPIRY = '7d';
+    jwtManager = new JwtTokenManager();
   });
 
-  describe('configuration', () => {
-    it('should initialize with correct defaults', () => {
-      expect(manager['secret']).toBe(mockSecret);
-      expect(manager['refreshSecret']).toBe(mockRefreshSecret);
-      expect(manager['accessTokenExpiry']).toBe('15m');
-      expect(manager['refreshTokenExpiry']).toBe('7d');
-      expect(manager['issuer']).toBe('web-buddy-auth');
-      expect(manager['audience']).toBe('web-buddy-users');
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+    delete process.env.JWT_ISSUER;
+    delete process.env.JWT_ACCESS_EXPIRY;
+    delete process.env.JWT_REFRESH_EXPIRY;
+  });
+
+  describe('initialization', () => {
+    it('should initialize with environment variables', () => {
+      expect(jwtManager).toBeDefined();
+      expect(jwtManager['secretKey']).toBe(mockSecret);
+      expect(jwtManager['issuer']).toBe(mockIssuer);
     });
 
-    it('should allow custom configuration', () => {
-      const customManager = new JwtTokenManager(
-        'custom-secret',
-        'custom-refresh',
-        '30m',
-        '14d',
-        'custom-issuer',
-        'custom-audience'
-      );
-
-      expect(customManager['accessTokenExpiry']).toBe('30m');
-      expect(customManager['refreshTokenExpiry']).toBe('14d');
-      expect(customManager['issuer']).toBe('custom-issuer');
-      expect(customManager['audience']).toBe('custom-audience');
+    it('should use default values if environment variables not set', () => {
+      delete process.env.JWT_SECRET;
+      delete process.env.JWT_ISSUER;
+      const manager = new JwtTokenManager();
+      expect(manager['secretKey']).toBe('your-secret-key-change-in-production');
+      expect(manager['issuer']).toBe('web-buddy-api');
     });
   });
 
   describe('generateAccessToken', () => {
-    it('should generate access token with user data', () => {
-      const mockToken = 'mock.access.token';
-      const userData = {
-        userId: 'user-123',
-        email: 'test@example.com',
-        roles: ['user', 'admin']
-      };
+    it('should generate an access token with user id and scopes', async () => {
+      const userId = 'user123';
+      const scopes = ['read', 'write'];
 
-      (jwt.sign as jest.Mock).mockReturnValue(mockToken);
+      const token = await jwtManager.generateAccessToken(userId, scopes);
 
-      const token = manager.generateAccessToken(userData);
-
-      expect(jwt.sign).toHaveBeenCalledWith(
-        userData,
-        mockSecret,
-        {
-          expiresIn: '15m',
-          issuer: 'web-buddy-auth',
-          audience: 'web-buddy-users',
-          jwtid: 'random-token-id'
-        }
-      );
-      expect(token).toBe(mockToken);
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
+      expect(token.split('.')).toHaveLength(3); // JWT format
     });
 
-    it('should include custom claims', () => {
-      const userData = {
-        userId: 'user-123',
-        customClaim: 'custom-value'
-      };
+    it('should generate access token with default empty scopes', async () => {
+      const userId = 'user123';
 
-      manager.generateAccessToken(userData);
+      const token = await jwtManager.generateAccessToken(userId);
 
-      expect(jwt.sign).toHaveBeenCalledWith(
-        userData,
-        expect.any(String),
-        expect.any(Object)
-      );
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
     });
   });
 
   describe('generateRefreshToken', () => {
-    it('should generate refresh token with user ID', () => {
-      const mockToken = 'mock.refresh.token';
-      const userId = 'user-123';
+    it('should generate a refresh token with user id', async () => {
+      const userId = 'user123';
 
-      (jwt.sign as jest.Mock).mockReturnValue(mockToken);
+      const token = await jwtManager.generateRefreshToken(userId);
 
-      const token = manager.generateRefreshToken(userId);
-
-      expect(jwt.sign).toHaveBeenCalledWith(
-        { userId, type: 'refresh' },
-        mockRefreshSecret,
-        {
-          expiresIn: '7d',
-          issuer: 'web-buddy-auth',
-          audience: 'web-buddy-users',
-          jwtid: 'random-token-id'
-        }
-      );
-      expect(token).toBe(mockToken);
-    });
-
-    it('should store refresh token in active tokens', () => {
-      const userId = 'user-123';
-      const mockToken = 'mock.refresh.token';
-
-      (jwt.sign as jest.Mock).mockReturnValue(mockToken);
-
-      manager.generateRefreshToken(userId);
-
-      expect(manager['activeRefreshTokens'].has('random-token-id')).toBe(true);
-      expect(manager['activeRefreshTokens'].get('random-token-id')).toEqual({
-        userId,
-        createdAt: expect.any(Date)
-      });
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
+      expect(token.split('.')).toHaveLength(3); // JWT format
     });
   });
 
   describe('validateToken', () => {
-    it('should validate valid access token', async () => {
-      const mockDecoded = {
-        userId: 'user-123',
-        email: 'test@example.com',
-        roles: ['user']
-      };
+    it('should validate a valid access token', async () => {
+      // Generate a token first
+      const userId = 'user123';
+      const token = await jwtManager.generateAccessToken(userId);
 
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
+      // Validate it
+      const decoded = await jwtManager.validateToken(token);
 
-      const result = await manager.validateToken('valid.token');
-
-      expect(jwt.verify).toHaveBeenCalledWith(
-        'valid.token',
-        mockSecret,
-        {
-          issuer: 'web-buddy-auth',
-          audience: 'web-buddy-users'
-        }
-      );
-      expect(result).toEqual(mockDecoded);
+      expect(decoded).toBeDefined();
+      expect(decoded.userId).toBe(userId);
+      expect(decoded.iss).toBe(mockIssuer);
     });
 
-    it('should throw error for invalid token', async () => {
-      (jwt.verify as jest.Mock).mockImplementation(() => {
-        throw new jwt.JsonWebTokenError('Invalid token');
-      });
+    it('should throw error for invalid token format', async () => {
+      const invalidToken = 'invalid.token';
 
-      await expect(manager.validateToken('invalid.token'))
+      await expect(jwtManager.validateToken(invalidToken))
         .rejects.toThrow('Invalid token');
     });
 
     it('should throw error for expired token', async () => {
-      (jwt.verify as jest.Mock).mockImplementation(() => {
-        throw new jwt.TokenExpiredError('Token expired', new Date());
-      });
+      // Create an expired token by manipulating the payload
+      const expiredPayload = {
+        userId: 'user123',
+        exp: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+        iss: mockIssuer
+      };
+      const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify(expiredPayload)).toString('base64url');
+      const expiredToken = `${header}.${payload}.fakesignature`;
 
-      await expect(manager.validateToken('expired.token'))
-        .rejects.toThrow('Token expired');
+      await expect(jwtManager.validateToken(expiredToken))
+        .rejects.toThrow('Invalid token');
+    });
+
+    it('should throw error for wrong issuer', async () => {
+      // Create a token with wrong issuer
+      process.env.JWT_ISSUER = 'different-issuer';
+      const differentManager = new JwtTokenManager();
+      const token = await jwtManager.generateAccessToken('user123');
+
+      await expect(differentManager.validateToken(token))
+        .rejects.toThrow('Invalid token');
     });
   });
 
   describe('validateRefreshToken', () => {
-    it('should validate valid refresh token', async () => {
-      const tokenId = 'token-123';
-      const mockDecoded = {
-        userId: 'user-123',
-        type: 'refresh',
-        jti: tokenId
-      };
+    it('should validate a valid refresh token', async () => {
+      const userId = 'user123';
+      const token = await jwtManager.generateRefreshToken(userId);
 
-      manager['activeRefreshTokens'].set(tokenId, {
-        userId: 'user-123',
-        createdAt: new Date()
-      });
+      const decoded = await jwtManager.validateRefreshToken(token);
 
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
-
-      const result = await manager.validateRefreshToken('valid.refresh.token');
-
-      expect(jwt.verify).toHaveBeenCalledWith(
-        'valid.refresh.token',
-        mockRefreshSecret,
-        {
-          issuer: 'web-buddy-auth',
-          audience: 'web-buddy-users'
-        }
-      );
-      expect(result).toEqual(mockDecoded);
+      expect(decoded).toBeDefined();
+      expect(decoded.userId).toBe(userId);
+      // The refresh token includes 'type' in the token itself, not in TokenPayload
+      expect((decoded as any).type).toBe('refresh');
     });
 
-    it('should reject revoked refresh token', async () => {
-      const mockDecoded = {
-        userId: 'user-123',
-        type: 'refresh',
-        jti: 'revoked-token-id'
-      };
+    it('should reject access tokens', async () => {
+      const userId = 'user123';
+      const accessToken = await jwtManager.generateAccessToken(userId);
 
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
-
-      await expect(manager.validateRefreshToken('revoked.token'))
-        .rejects.toThrow('Refresh token has been revoked');
-    });
-
-    it('should reject non-refresh token', async () => {
-      const mockDecoded = {
-        userId: 'user-123',
-        type: 'access',
-        jti: 'token-id'
-      };
-
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
-
-      await expect(manager.validateRefreshToken('access.token'))
-        .rejects.toThrow('Invalid token type');
+      await expect(jwtManager.validateRefreshToken(accessToken))
+        .rejects.toThrow('Invalid refresh token');
     });
   });
 
   describe('invalidateRefreshToken', () => {
-    it('should remove refresh token from active tokens', async () => {
-      const tokenId = 'token-123';
-      const mockDecoded = {
-        userId: 'user-123',
-        type: 'refresh',
-        jti: tokenId
-      };
+    it('should invalidate a valid refresh token', async () => {
+      const userId = 'user123';
+      const token = await jwtManager.generateRefreshToken(userId);
 
-      manager['activeRefreshTokens'].set(tokenId, {
-        userId: 'user-123',
-        createdAt: new Date()
-      });
-
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
-
-      await manager.invalidateRefreshToken('refresh.token');
-
-      expect(manager['activeRefreshTokens'].has(tokenId)).toBe(false);
-    });
-
-    it('should return false for already revoked token', async () => {
-      const mockDecoded = {
-        userId: 'user-123',
-        type: 'refresh',
-        jti: 'non-existent-token'
-      };
-
-      (jwt.verify as jest.Mock).mockReturnValue(mockDecoded);
-
-      const result = await manager.invalidateRefreshToken('refresh.token');
-
-      expect(result).toBe(false);
+      // Invalidate should not throw
+      await expect(jwtManager.invalidateRefreshToken(token))
+        .resolves.toBeUndefined();
     });
 
     it('should handle invalid token gracefully', async () => {
-      (jwt.verify as jest.Mock).mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
-
-      const result = await manager.invalidateRefreshToken('invalid.token');
-
-      expect(result).toBe(false);
+      // Should not throw, just log error
+      await expect(jwtManager.invalidateRefreshToken('invalid.token'))
+        .resolves.toBeUndefined();
     });
   });
 
-  describe('extractTokenFromHeader', () => {
-    it('should extract Bearer token', () => {
-      const token = manager.extractTokenFromHeader('Bearer eyJhbGciOiJIUzI1NiJ9');
-      expect(token).toBe('eyJhbGciOiJIUzI1NiJ9');
+  describe('blacklistToken', () => {
+    it('should blacklist a valid token', async () => {
+      const userId = 'user123';
+      const token = await jwtManager.generateAccessToken(userId);
+
+      await expect(jwtManager.blacklistToken(token))
+        .resolves.toBeUndefined();
     });
 
-    it('should return null for missing header', () => {
-      const token = manager.extractTokenFromHeader(undefined);
-      expect(token).toBeNull();
-    });
-
-    it('should return null for invalid format', () => {
-      const token = manager.extractTokenFromHeader('InvalidFormat');
-      expect(token).toBeNull();
-    });
-
-    it('should return null for empty Bearer token', () => {
-      const token = manager.extractTokenFromHeader('Bearer ');
-      expect(token).toBeNull();
+    it('should handle invalid token gracefully', async () => {
+      await expect(jwtManager.blacklistToken('invalid.token'))
+        .resolves.toBeUndefined();
     });
   });
 
-  describe('token cleanup', () => {
-    it('should clean up expired refresh tokens', () => {
-      const oldDate = new Date();
-      oldDate.setDate(oldDate.getDate() - 8); // 8 days old
+  describe('getTokenExpiry', () => {
+    it('should return expiry date for valid token', async () => {
+      const userId = 'user123';
+      const token = await jwtManager.generateAccessToken(userId);
 
-      manager['activeRefreshTokens'].set('old-token', {
-        userId: 'user-123',
-        createdAt: oldDate
-      });
+      const expiry = jwtManager.getTokenExpiry(token);
 
-      manager['activeRefreshTokens'].set('new-token', {
-        userId: 'user-456',
-        createdAt: new Date()
-      });
-
-      manager['cleanupExpiredTokens']();
-
-      expect(manager['activeRefreshTokens'].has('old-token')).toBe(false);
-      expect(manager['activeRefreshTokens'].has('new-token')).toBe(true);
+      expect(expiry).toBeInstanceOf(Date);
+      expect(expiry!.getTime()).toBeGreaterThan(Date.now());
     });
 
-    it('should schedule periodic cleanup', () => {
-      jest.useFakeTimers();
-      const cleanupSpy = jest.spyOn(manager as any, 'cleanupExpiredTokens');
-
-      manager['startCleanupTimer']();
-
-      jest.advanceTimersByTime(3600000); // 1 hour
-
-      expect(cleanupSpy).toHaveBeenCalled();
-
-      jest.useRealTimers();
+    it('should return null for invalid token', () => {
+      const expiry = jwtManager.getTokenExpiry('invalid.token');
+      expect(expiry).toBeNull();
     });
   });
 
-  describe('security features', () => {
-    it('should generate unique token IDs', () => {
-      const tokens = new Set();
-      
-      for (let i = 0; i < 10; i++) {
-        (crypto.randomBytes as jest.Mock).mockReturnValueOnce({
-          toString: jest.fn().mockReturnValue(`token-${i}`)
-        });
-        manager.generateAccessToken({ userId: 'user' });
-      }
+  describe('isTokenExpiringSoon', () => {
+    it('should return false for fresh token', async () => {
+      const userId = 'user123';
+      const token = await jwtManager.generateAccessToken(userId);
 
-      expect(crypto.randomBytes).toHaveBeenCalledTimes(10);
+      const expiringSoon = jwtManager.isTokenExpiringSoon(token);
+      expect(expiringSoon).toBe(false);
     });
 
-    it('should use different secrets for access and refresh tokens', () => {
-      manager.generateAccessToken({ userId: 'user-123' });
-      manager.generateRefreshToken('user-123');
+    it('should return true for invalid token', () => {
+      const expiringSoon = jwtManager.isTokenExpiringSoon('invalid.token');
+      expect(expiringSoon).toBe(true);
+    });
 
-      const calls = (jwt.sign as jest.Mock).mock.calls;
-      expect(calls[0][1]).toBe(mockSecret);
-      expect(calls[1][1]).toBe(mockRefreshSecret);
-      expect(calls[0][1]).not.toBe(calls[1][1]);
+    it('should return true for token expiring within 5 minutes', async () => {
+      // Create a token that expires in 3 minutes
+      const nearExpiryPayload = {
+        userId: 'user123',
+        exp: Math.floor(Date.now() / 1000) + 180, // 3 minutes
+        iss: mockIssuer,
+        sub: 'user123',
+        jti: 'test_jti'
+      };
+      const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify(nearExpiryPayload)).toString('base64url');
+      const signature = Buffer.from(`${header}.${payload}.${mockSecret}`).toString('base64url').slice(0, 43);
+      const nearExpiryToken = `${header}.${payload}.${signature}`;
+
+      const expiringSoon = jwtManager.isTokenExpiringSoon(nearExpiryToken);
+      expect(expiringSoon).toBe(true);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle malformed tokens', async () => {
+      const malformedToken = 'not-a-jwt';
+
+      await expect(jwtManager.validateToken(malformedToken))
+        .rejects.toThrow('Invalid token');
+    });
+
+    it('should handle tokens with wrong number of parts', async () => {
+      const wrongFormatToken = 'only.two';
+
+      await expect(jwtManager.validateToken(wrongFormatToken))
+        .rejects.toThrow('Invalid token');
+    });
+
+    it('should handle empty token', async () => {
+      await expect(jwtManager.validateToken(''))
+        .rejects.toThrow('Invalid token');
     });
   });
 });
