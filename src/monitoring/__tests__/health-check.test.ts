@@ -4,7 +4,7 @@
  * Target: Boost nodejs.server coverage from 13.41%
  */
 
-import { HealthCheckService } from '../infrastructure/health-check';
+import { HealthCheckManager } from '../infrastructure/health-check';
 import { Application } from '../../stubs/typescript-eda-stubs';
 
 // Mock dependencies
@@ -33,12 +33,12 @@ jest.mock('child_process', () => ({
   execSync: jest.fn()
 }));
 
-describe('HealthCheckService', () => {
-  let healthCheck: HealthCheckService;
+describe('HealthCheckManager', () => {
+  let healthCheck: HealthCheckManager;
   let mockApp: any;
 
   beforeEach(() => {
-    healthCheck = new HealthCheckService();
+    healthCheck = new HealthCheckManager();
     mockApp = new Application();
     jest.clearAllMocks();
     
