@@ -130,52 +130,46 @@ describe('Authentication Events', () => {
     });
   });
 
-  describe('SessionCreatedEvent', () => {
-    it('should create event with session details', () => {
-      const event = new SessionCreatedEvent(
-        'session-123',
-        'user-456',
-        new Date('2024-01-01T10:00:00Z'),
+  describe('ApiKeyValidationRequestedEvent', () => {
+    it('should create event with API key', () => {
+      const event = new ApiKeyValidationRequestedEvent(
+        'api-key-123',
+        '/api/data',
         {
           ipAddress: '192.168.1.1',
-          userAgent: 'Mozilla/5.0',
-          deviceId: 'device-123'
+          userAgent: 'API Client/1.0'
         }
       );
 
       expect(event).toBeInstanceOf(Event);
-      expect(event.sessionId).toBe('session-123');
-      expect(event.userId).toBe('user-456');
-      expect(event.expiresAt).toEqual(new Date('2024-01-01T10:00:00Z'));
-      expect(event.metadata.deviceId).toBe('device-123');
+      expect(event.apiKey).toBe('api-key-123');
+      expect(event.endpoint).toBe('/api/data');
+      expect(event.metadata.ipAddress).toBe('192.168.1.1');
+      expect(event.metadata.userAgent).toBe('API Client/1.0');
     });
   });
 
-  describe('SessionTerminatedEvent', () => {
-    it('should create event with termination reason', () => {
-      const event = new SessionTerminatedEvent(
-        'session-123',
-        'user-456',
-        'logout'
+  describe('UserRegistrationRequestedEvent', () => {
+    it('should create event with user data', () => {
+      const event = new UserRegistrationRequestedEvent(
+        {
+          email: 'newuser@example.com',
+          password: 'securepass123',
+          firstName: 'John',
+          lastName: 'Doe'
+        },
+        {
+          ipAddress: '192.168.1.1',
+          userAgent: 'Chrome/96.0'
+        }
       );
 
       expect(event).toBeInstanceOf(Event);
-      expect(event.sessionId).toBe('session-123');
-      expect(event.userId).toBe('user-456');
-      expect(event.reason).toBe('logout');
-    });
-
-    it('should accept different termination reasons', () => {
-      const reasons = ['logout', 'expired', 'revoked', 'replaced'];
-      
-      reasons.forEach(reason => {
-        const event = new SessionTerminatedEvent(
-          'session-123',
-          'user-456',
-          reason as any
-        );
-        expect(event.reason).toBe(reason);
-      });
+      expect(event.userData.email).toBe('newuser@example.com');
+      expect(event.userData.firstName).toBe('John');
+      expect(event.userData.lastName).toBe('Doe');
+      expect(event.metadata.ipAddress).toBe('192.168.1.1');
+      expect(event.metadata.userAgent).toBe('Chrome/96.0');
     });
   });
 
@@ -195,75 +189,117 @@ describe('Authentication Events', () => {
     });
   });
 
-  describe('PasswordResetCompletedEvent', () => {
-    it('should create event with user ID and metadata', () => {
-      const event = new PasswordResetCompletedEvent(
-        'user-123',
+  describe('OAuth2AuthenticationRequestedEvent', () => {
+    it('should create event with OAuth2 details', () => {
+      const event = new OAuth2AuthenticationRequestedEvent(
+        'google',
+        'auth-code-123',
+        'https://app.example.com/callback',
+        'state-123',
         {
           ipAddress: '192.168.1.1',
-          userAgent: 'Firefox/95.0'
+          userAgent: 'Chrome/96.0'
         }
       );
 
       expect(event).toBeInstanceOf(Event);
-      expect(event.userId).toBe('user-123');
-      expect(event.metadata.userAgent).toBe('Firefox/95.0');
+      expect(event.provider).toBe('google');
+      expect(event.code).toBe('auth-code-123');
+      expect(event.redirectUri).toBe('https://app.example.com/callback');
+      expect(event.state).toBe('state-123');
+      expect(event.metadata?.ipAddress).toBe('192.168.1.1');
+      expect(event.metadata?.userAgent).toBe('Chrome/96.0');
+    });
+
+    it('should create event without optional properties', () => {
+      const event = new OAuth2AuthenticationRequestedEvent(
+        'github',
+        'code-456',
+        'https://app.example.com/auth'
+      );
+
+      expect(event.provider).toBe('github');
+      expect(event.code).toBe('code-456');
+      expect(event.redirectUri).toBe('https://app.example.com/auth');
+      expect(event.state).toBeUndefined();
+      expect(event.metadata).toBeUndefined();
     });
   });
 
-  describe('SecurityAlertEvent', () => {
-    it('should create event with security alert details', () => {
-      const event = new SecurityAlertEvent(
+  describe('RateLimitExceededEvent', () => {
+    it('should create event with rate limit details', () => {
+      const event = new RateLimitExceededEvent(
+        'api-key-123',
+        '/api/data',
+        105,
+        100,
+        60,
+        {
+          ipAddress: '192.168.1.1',
+          userAgent: 'API Client/1.0'
+        }
+      );
+
+      expect(event).toBeInstanceOf(Event);
+      expect(event.identifier).toBe('api-key-123');
+      expect(event.endpoint).toBe('/api/data');
+      expect(event.currentCount).toBe(105);
+      expect(event.limit).toBe(100);
+      expect(event.windowSeconds).toBe(60);
+      expect(event.metadata.ipAddress).toBe('192.168.1.1');
+      expect(event.metadata.userAgent).toBe('API Client/1.0');
+    });
+  });
+
+  describe('SessionExpiredEvent', () => {
+    it('should create event with session details', () => {
+      const expiredAt = new Date();
+      const event = new SessionExpiredEvent(
+        'session-123',
+        'user-456',
+        expiredAt,
+        {
+          ipAddress: '192.168.1.1',
+          userAgent: 'Chrome/96.0'
+        }
+      );
+
+      expect(event).toBeInstanceOf(Event);
+      expect(event.sessionId).toBe('session-123');
+      expect(event.userId).toBe('user-456');
+      expect(event.expiredAt).toBe(expiredAt);
+      expect(event.metadata?.ipAddress).toBe('192.168.1.1');
+      expect(event.metadata?.userAgent).toBe('Chrome/96.0');
+    });
+  });
+
+  describe('SuspiciousActivityDetectedEvent', () => {
+    it('should create event with suspicious activity details', () => {
+      const timestamp = new Date();
+      const event = new SuspiciousActivityDetectedEvent(
         'user-123',
-        'suspicious_login',
-        'high',
+        'multiple_failed_logins',
+        0.85,
         {
           attempts: 5,
-          location: 'Unknown',
-          ipAddress: '10.0.0.1'
+          locations: ['USA', 'China', 'Russia']
+        },
+        {
+          ipAddress: '10.0.0.1',
+          userAgent: 'Unknown',
+          timestamp
         }
       );
 
       expect(event).toBeInstanceOf(Event);
       expect(event.userId).toBe('user-123');
-      expect(event.alertType).toBe('suspicious_login');
-      expect(event.severity).toBe('high');
+      expect(event.activityType).toBe('multiple_failed_logins');
+      expect(event.riskScore).toBe(0.85);
       expect(event.details.attempts).toBe(5);
-      expect(event.details.location).toBe('Unknown');
-      expect(event.details.ipAddress).toBe('10.0.0.1');
-    });
-
-    it('should accept different alert types', () => {
-      const alertTypes = [
-        'suspicious_login',
-        'multiple_failed_attempts',
-        'password_breach',
-        'unusual_activity'
-      ];
-
-      alertTypes.forEach(alertType => {
-        const event = new SecurityAlertEvent(
-          'user-123',
-          alertType as any,
-          'medium',
-          {}
-        );
-        expect(event.alertType).toBe(alertType);
-      });
-    });
-
-    it('should accept different severity levels', () => {
-      const severities = ['low', 'medium', 'high', 'critical'];
-      
-      severities.forEach(severity => {
-        const event = new SecurityAlertEvent(
-          'user-123',
-          'unusual_activity',
-          severity as any,
-          {}
-        );
-        expect(event.severity).toBe(severity);
-      });
+      expect(event.details.locations).toEqual(['USA', 'China', 'Russia']);
+      expect(event.metadata.ipAddress).toBe('10.0.0.1');
+      expect(event.metadata.userAgent).toBe('Unknown');
+      expect(event.metadata.timestamp).toBe(timestamp);
     });
   });
 });
