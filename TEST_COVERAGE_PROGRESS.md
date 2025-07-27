@@ -30,13 +30,15 @@
 - **Auth Events**: 14 tests covering authentication event classes
 - **OpenApiDocumentationGenerator**: 24 tests for API documentation generation
 - **RedisRateLimiter**: 20 tests for distributed rate limiting
+- **PasswordHashManager**: 37 tests for password hashing, verification, and reset functionality
+- **OAuth2Manager**: 29 tests for OAuth2 authentication flows with multiple providers
 
-### Total Tests Created: 163
+### Total Tests Created: 192
 
 ### Coverage Improvement
 - Starting: 18.91%
-- Current: ~28-30% (estimated based on tests added)
-- Progress: +10-12% coverage improvement
+- Current: ~30-32% (estimated based on tests added)
+- Progress: +11-13% coverage improvement
 
 ### Current Status
 - **Blocked**: Waiting for PM direction since 4:00 AM on test coverage priorities
