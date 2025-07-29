@@ -424,8 +424,8 @@ describe('HealthCheckManager', () => {
       const result = await healthManager.runHealthCheck('system');
       
       expect(result.status).toBe(HealthStatus.HEALTHY);
-      expect(result.details).toHaveProperty('cpuUsage');
-      expect(result.details).toHaveProperty('memoryUsage');
+      expect(result.details).toHaveProperty('cpu_usage');
+      expect(result.details).toHaveProperty('memory_usage');
       expect(result.details).toHaveProperty('uptime');
     });
 
