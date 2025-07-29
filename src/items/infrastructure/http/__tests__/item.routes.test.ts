@@ -54,8 +54,8 @@ describe('Item Routes', () => {
   describe('GET /items', () => {
     it('should return all items', async () => {
       const mockItems = [
-        { id: '1', name: 'Item 1', status: 'active' },
-        { id: '2', name: 'Item 2', status: 'active' }
+        { id: '1', name: 'Item 1', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 },
+        { id: '2', name: 'Item 2', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 }
       ];
       
       mockItemService.getAllItems.mockResolvedValue(mockItems);
@@ -84,7 +84,7 @@ describe('Item Routes', () => {
 
   describe('GET /items/:item_id', () => {
     it('should return specific item', async () => {
-      const mockItem = { id: '123', name: 'Test Item', status: 'active' };
+      const mockItem = { id: '123', name: 'Test Item', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 };
       mockReq.params = { item_id: '123' };
       
       mockItemService.getItem.mockResolvedValue(mockItem);
@@ -138,9 +138,10 @@ describe('Item Routes', () => {
       const createdItem = {
         id: 'new-123',
         ...newItemData,
-        status: 'active',
+        status: 'active' as const,
         createdAt: new Date(),
-        createdBy: 'user-123'
+        updatedAt: new Date(),
+        version: 1
       };
       
       mockReq.body = newItemData;
@@ -193,7 +194,7 @@ describe('Item Routes', () => {
       const updateData = {
         name: 'Updated Item',
         description: 'Updated description',
-        status: 'inactive',
+        status: 'inactive' as const,
         tags: ['updated'],
         metadata: { updated: true }
       };
@@ -201,8 +202,9 @@ describe('Item Routes', () => {
       const updatedItem = {
         id: '123',
         ...updateData,
+        createdAt: new Date(),
         updatedAt: new Date(),
-        updatedBy: 'user-456'
+        version: 2
       };
       
       mockReq.params = { item_id: '123' };
@@ -245,12 +247,16 @@ describe('Item Routes', () => {
       const updatedItem = {
         id: '123',
         name: 'Test Item',
-        status: 'archived',
-        updatedAt: new Date()
+        status: 'archived' as const,
+        tags: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 2
       };
       
       mockReq.params = { item_id: '123' };
-      mockReq.body = { status: 'archived' };
+      mockReq.body = { status: 'archived' as const };
       mockReq.headers = { 'x-user-id': 'user-789' };
       
       mockItemService.changeItemStatus.mockResolvedValue(updatedItem);
@@ -336,11 +342,15 @@ describe('Item Routes', () => {
   describe('GET /item/:item_id/history', () => {
     it('should return item history', async () => {
       const mockHistory = {
-        currentState: { id: '123', name: 'Test Item', status: 'active' },
+        itemId: '123',
+        currentState: { id: '123', name: 'Test Item', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 },
         history: [
-          { action: 'created', timestamp: new Date(), userId: 'user-1' },
-          { action: 'updated', timestamp: new Date(), userId: 'user-2' }
-        ]
+          { id: 'h1', itemId: '123', action: 'created' as const, timestamp: new Date(), userId: 'user-1' },
+          { id: 'h2', itemId: '123', action: 'updated' as const, timestamp: new Date(), userId: 'user-2' }
+        ],
+        totalChanges: 2,
+        firstChange: new Date(),
+        lastChange: new Date()
       };
       
       mockReq.params = { item_id: '123' };
@@ -368,11 +378,15 @@ describe('Item Routes', () => {
 
     it('should filter history by date range', async () => {
       const mockHistory = {
-        currentState: { id: '123', name: 'Test Item' },
-        history: [{ action: 'created', timestamp: new Date() }]
+        itemId: '123',
+        currentState: { id: '123', name: 'Test Item', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 },
+        history: [{ id: 'h1', itemId: '123', action: 'created' as const, timestamp: new Date() }],
+        totalChanges: 1,
+        firstChange: new Date(),
+        lastChange: new Date()
       };
       
-      const filteredHistory = [{ action: 'created', timestamp: new Date() }];
+      const filteredHistory = [{ id: 'h1', itemId: '123', action: 'created' as const, timestamp: new Date() }];
       
       mockReq.params = { item_id: '123' };
       mockReq.query = {
@@ -395,14 +409,18 @@ describe('Item Routes', () => {
 
     it('should filter history by action', async () => {
       const mockHistory = {
-        currentState: { id: '123', name: 'Test Item' },
-        history: [{ action: 'updated', timestamp: new Date() }]
+        itemId: '123',
+        currentState: { id: '123', name: 'Test Item', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 },
+        history: [{ id: 'h1', itemId: '123', action: 'updated' as const, timestamp: new Date() }],
+        totalChanges: 1,
+        firstChange: new Date(),
+        lastChange: new Date()
       };
       
-      const filteredHistory = [{ action: 'updated', timestamp: new Date() }];
+      const filteredHistory = [{ id: 'h1', itemId: '123', action: 'updated' as const, timestamp: new Date() }];
       
       mockReq.params = { item_id: '123' };
-      mockReq.query = { action: 'updated' };
+      mockReq.query = { action: 'updated' as const };
       
       mockItemService.getItemHistory.mockResolvedValue(mockHistory);
       mockItemService.getItemHistoryByAction.mockResolvedValue(filteredHistory);
@@ -434,11 +452,11 @@ describe('Item Routes', () => {
   describe('GET /items/status/:status', () => {
     it('should return items by status', async () => {
       const mockItems = [
-        { id: '1', name: 'Active Item 1', status: 'active' },
-        { id: '2', name: 'Active Item 2', status: 'active' }
+        { id: '1', name: 'Active Item 1', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 },
+        { id: '2', name: 'Active Item 2', status: 'active' as const, tags: [], metadata: {}, createdAt: new Date(), updatedAt: new Date(), version: 1 }
       ];
       
-      mockReq.params = { status: 'active' };
+      mockReq.params = { status: 'active' as const };
       
       mockItemService.getItemsByStatus.mockResolvedValue(mockItems);
       
@@ -449,7 +467,7 @@ describe('Item Routes', () => {
       expect(jsonMock).toHaveBeenCalledWith({
         items: mockItems,
         count: 2,
-        status: 'active',
+        status: 'active' as const,
         timestamp: expect.any(String)
       });
     });
@@ -489,7 +507,12 @@ describe('Item Routes', () => {
       mockItemService.createItem.mockResolvedValue({
         id: 'new-item',
         name: 'Test Item',
-        createdBy: 'custom-user-123'
+        status: 'active' as const,
+        tags: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1
       });
       
       const handler = getRouteHandler('/items', 'post');
@@ -507,7 +530,13 @@ describe('Item Routes', () => {
       
       mockItemService.createItem.mockResolvedValue({
         id: 'new-item',
-        name: 'Test Item'
+        name: 'Test Item',
+        status: 'active' as const,
+        tags: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1
       });
       
       const handler = getRouteHandler('/items', 'post');
