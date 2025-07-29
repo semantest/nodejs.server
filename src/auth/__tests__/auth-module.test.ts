@@ -4,383 +4,340 @@
  * Target: Boost nodejs.server coverage from 13.41%
  */
 
-import { AuthModule } from '../auth-module';
-import { Application } from '../../stubs/typescript-eda-stubs';
+import { AuthModule, createAuthModule, useAuthentication, DEFAULT_AUTH_CONFIG } from '../auth-module';
+import { Express } from 'express';
+import { ProductionAuthService } from '../production-auth-service';
+import { AuthMiddleware } from '../middleware/auth-middleware';
+import { AuthRoutes } from '../routes/auth-routes';
 
-// Mock the stubs
-jest.mock('../../stubs/typescript-eda-stubs', () => ({
-  Module: class MockModule {},
-  Application: class MockApplication {
-    on = jest.fn();
-    emit = jest.fn();
-    off = jest.fn();
-  },
-  EnableModule: () => (target: any) => target
-}));
-
-// Mock the auth service
-jest.mock('../auth-service', () => ({
-  AuthService: jest.fn().mockImplementation(() => ({
-    metadata: new Map()
-  }))
+// Mock the dependencies
+jest.mock('../production-auth-service');
+jest.mock('../middleware/auth-middleware');
+jest.mock('../routes/auth-routes');
+jest.mock('../middleware/auth-middleware', () => ({
+  AuthMiddleware: jest.fn().mockImplementation(() => ({
+    cors: jest.fn().mockReturnValue('cors-middleware'),
+    rateLimiter: jest.fn().mockReturnValue('rate-limiter'),
+    requireAuth: jest.fn().mockReturnValue('require-auth'),
+    requirePermissions: jest.fn().mockReturnValue('require-permissions'),
+    requireRoles: jest.fn().mockReturnValue('require-roles'),
+    requireApiKey: jest.fn().mockReturnValue('require-api-key'),
+    optionalAuth: jest.fn().mockReturnValue('optional-auth')
+  })),
+  authErrorHandler: jest.fn()
 }));
 
 describe('AuthModule', () => {
   let authModule: AuthModule;
-  let mockApp: any;
+  let mockApp: Express;
+  let consoleLogSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    authModule = new AuthModule();
-    mockApp = new Application();
     jest.clearAllMocks();
+    authModule = new AuthModule();
+    mockApp = {
+      use: jest.fn()
+    } as any;
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+
+    // Mock the AuthRoutes
+    (AuthRoutes as jest.MockedClass<typeof AuthRoutes>).mockImplementation(() => ({
+      getRouter: jest.fn().mockReturnValue('auth-router')
+    } as any));
   });
 
-  describe('module metadata', () => {
-    it('should have correct module name', () => {
-      expect(authModule.name).toBe('auth');
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+  });
+
+  describe('module initialization', () => {
+    it('should create an instance of AuthModule', () => {
+      expect(authModule).toBeInstanceOf(AuthModule);
     });
 
-    it('should have correct version', () => {
-      expect(authModule.version).toBe('1.0.0');
+    it('should have auth service', () => {
+      expect(authModule['authService']).toBeDefined();
     });
 
-    it('should provide auth services', () => {
-      expect(authModule.provides).toEqual(['auth']);
+    it('should have auth middleware', () => {
+      expect(authModule['authMiddleware']).toBeDefined();
     });
 
-    it('should depend on required modules', () => {
-      expect(authModule.depends).toEqual(['core', 'crypto', 'database']);
+    it('should have auth routes', () => {
+      expect(authModule['authRoutes']).toBeDefined();
     });
 
-    it('should have correct description', () => {
-      expect(authModule.description).toBe('Authentication and authorization module for Web-Buddy platform');
+    it('should have config', () => {
+      expect(authModule['config']).toBeDefined();
     });
   });
 
   describe('module configuration', () => {
-    it('should have default configuration', () => {
-      const config = authModule.config;
-      
-      expect(config.jwt.secret).toBe(process.env.JWT_SECRET || 'default-secret-change-in-production');
-      expect(config.jwt.expiresIn).toBe('15m');
-      expect(config.jwt.refreshExpiresIn).toBe('7d');
-      expect(config.bcrypt.rounds).toBe(10);
-      expect(config.oauth2.providers).toEqual(['google', 'github', 'microsoft']);
-      expect(config.rateLimit.maxAttempts).toBe(5);
-      expect(config.rateLimit.windowMs).toBe(900000); // 15 minutes
-      expect(config.session.secure).toBe(process.env.NODE_ENV === 'production');
-      expect(config.session.sameSite).toBe('strict');
-    });
-
-    it('should use JWT_SECRET from environment', () => {
-      const originalSecret = process.env.JWT_SECRET;
-      process.env.JWT_SECRET = 'test-secret';
-      
-      const module = new AuthModule();
-      expect(module.config.jwt.secret).toBe('test-secret');
-      
-      // Restore
-      if (originalSecret) {
-        process.env.JWT_SECRET = originalSecret;
-      } else {
-        delete process.env.JWT_SECRET;
-      }
-    });
-
-    it('should set secure session in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-      
-      const module = new AuthModule();
-      expect(module.config.session.secure).toBe(true);
-      
-      // Restore
-      if (originalEnv) {
-        process.env.NODE_ENV = originalEnv;
-      } else {
-        delete process.env.NODE_ENV;
-      }
-    });
-  });
-
-  describe('module lifecycle', () => {
-    it('should initialize auth service on init', async () => {
-      const { AuthService } = require('../auth-service');
-      
-      await authModule.onInit(mockApp);
-      
-      expect(AuthService).toHaveBeenCalled();
-      expect(authModule['authService']).toBeDefined();
-    });
-
-    it('should start auth service', async () => {
-      authModule['authService'] = {
-        start: jest.fn().mockResolvedValue(undefined)
-      } as any;
-      
-      await authModule.onStart();
-      
-      expect(authModule['authService'].start).toHaveBeenCalled();
-    });
-
-    it('should handle missing auth service on start', async () => {
-      authModule['authService'] = undefined;
-      
-      // Should not throw
-      await expect(authModule.onStart()).resolves.toBeUndefined();
-    });
-
-    it('should stop auth service', async () => {
-      authModule['authService'] = {
-        stop: jest.fn().mockResolvedValue(undefined)
-      } as any;
-      
-      await authModule.onStop();
-      
-      expect(authModule['authService'].stop).toHaveBeenCalled();
-    });
-
-    it('should handle missing auth service on stop', async () => {
-      authModule['authService'] = undefined;
-      
-      // Should not throw
-      await expect(authModule.onStop()).resolves.toBeUndefined();
-    });
-
-    it('should cleanup resources on destroy', async () => {
-      authModule['authService'] = {
-        cleanup: jest.fn().mockResolvedValue(undefined)
-      } as any;
-      
-      authModule['configWatcher'] = {
-        close: jest.fn()
-      } as any;
-      
-      await authModule.onDestroy();
-      
-      expect(authModule['authService'].cleanup).toHaveBeenCalled();
-      expect(authModule['configWatcher'].close).toHaveBeenCalled();
-    });
-
-    it('should handle missing resources on destroy', async () => {
-      authModule['authService'] = undefined;
-      authModule['configWatcher'] = undefined;
-      
-      // Should not throw
-      await expect(authModule.onDestroy()).resolves.toBeUndefined();
-    });
-  });
-
-  describe('auth service methods', () => {
-    beforeEach(async () => {
-      authModule['authService'] = {
-        authenticate: jest.fn().mockResolvedValue({ token: 'test-token' }),
-        authorize: jest.fn().mockResolvedValue(true),
-        refreshToken: jest.fn().mockResolvedValue({ token: 'new-token' }),
-        logout: jest.fn().mockResolvedValue(undefined),
-        register: jest.fn().mockResolvedValue({ userId: 'test-user' }),
-        validateToken: jest.fn().mockResolvedValue({ valid: true }),
-        revokeToken: jest.fn().mockResolvedValue(undefined),
-        getUser: jest.fn().mockResolvedValue({ id: 'test-user', email: 'test@example.com' })
-      } as any;
-    });
-
-    it('should authenticate user', async () => {
-      const credentials = { email: 'test@example.com', password: 'password' };
-      const result = await authModule.authenticate(credentials);
-      
-      expect(authModule['authService'].authenticate).toHaveBeenCalledWith(credentials);
-      expect(result).toEqual({ token: 'test-token' });
-    });
-
-    it('should authorize user', async () => {
-      const token = 'test-token';
-      const resource = '/api/users';
-      const action = 'read';
-      
-      const result = await authModule.authorize(token, resource, action);
-      
-      expect(authModule['authService'].authorize).toHaveBeenCalledWith(token, resource, action);
-      expect(result).toBe(true);
-    });
-
-    it('should refresh token', async () => {
-      const refreshToken = 'refresh-token';
-      const result = await authModule.refreshToken(refreshToken);
-      
-      expect(authModule['authService'].refreshToken).toHaveBeenCalledWith(refreshToken);
-      expect(result).toEqual({ token: 'new-token' });
-    });
-
-    it('should logout user', async () => {
-      const token = 'test-token';
-      await authModule.logout(token);
-      
-      expect(authModule['authService'].logout).toHaveBeenCalledWith(token);
-    });
-
-    it('should register user', async () => {
-      const userData = { email: 'test@example.com', password: 'password' };
-      const result = await authModule.register(userData);
-      
-      expect(authModule['authService'].register).toHaveBeenCalledWith(userData);
-      expect(result).toEqual({ userId: 'test-user' });
-    });
-
-    it('should validate token', async () => {
-      const token = 'test-token';
-      const result = await authModule.validateToken(token);
-      
-      expect(authModule['authService'].validateToken).toHaveBeenCalledWith(token);
-      expect(result).toEqual({ valid: true });
-    });
-
-    it('should revoke token', async () => {
-      const token = 'test-token';
-      await authModule.revokeToken(token);
-      
-      expect(authModule['authService'].revokeToken).toHaveBeenCalledWith(token);
-    });
-
-    it('should get user', async () => {
-      const userId = 'test-user';
-      const result = await authModule.getUser(userId);
-      
-      expect(authModule['authService'].getUser).toHaveBeenCalledWith(userId);
-      expect(result).toEqual({ id: 'test-user', email: 'test@example.com' });
-    });
-
-    it('should throw error when auth service not initialized', async () => {
-      authModule['authService'] = undefined;
-      
-      await expect(authModule.authenticate({ email: 'test', password: 'test' }))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.authorize('token', 'resource', 'action'))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.refreshToken('token'))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.logout('token'))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.register({ email: 'test', password: 'test' }))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.validateToken('token'))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.revokeToken('token'))
-        .rejects.toThrow('Auth service not initialized');
-      await expect(authModule.getUser('userId'))
-        .rejects.toThrow('Auth service not initialized');
-    });
-  });
-
-  describe('configuration updates', () => {
-    it('should update JWT configuration', () => {
-      const newConfig = {
-        secret: 'new-secret',
-        expiresIn: '30m'
+    it('should accept custom configuration', () => {
+      const customConfig = {
+        jwtSecret: 'custom-secret',
+        jwtExpiresIn: '30m',
+        enableRateLimiting: false,
+        apiKeyPrefix: 'custom_',
+        apiKeyLength: 64
       };
       
-      authModule.updateJwtConfig(newConfig);
-      
-      expect(authModule.config.jwt.secret).toBe('new-secret');
-      expect(authModule.config.jwt.expiresIn).toBe('30m');
+      const customAuthModule = new AuthModule(customConfig);
+      expect(customAuthModule['config']).toEqual(customConfig);
     });
 
-    it('should update rate limit configuration', () => {
-      const newConfig = {
-        maxAttempts: 10,
-        windowMs: 600000
+    it('should set environment variables from config', () => {
+      const config = {
+        jwtSecret: 'test-jwt-secret',
+        jwtExpiresIn: '20m',
+        redisHost: 'redis-server',
+        redisPort: 6380,
+        bcryptSaltRounds: 14
       };
-      
-      authModule.updateRateLimitConfig(newConfig);
-      
-      expect(authModule.config.rateLimit.maxAttempts).toBe(10);
-      expect(authModule.config.rateLimit.windowMs).toBe(600000);
-    });
 
-    it('should get current configuration', () => {
-      const config = authModule.getConfig();
-      
-      expect(config).toEqual(authModule.config);
-      expect(config).not.toBe(authModule.config); // Should be a copy
+      new AuthModule(config);
+
+      expect(process.env.JWT_SECRET).toBe('test-jwt-secret');
+      expect(process.env.JWT_EXPIRES_IN).toBe('20m');
+      expect(process.env.REDIS_HOST).toBe('redis-server');
+      expect(process.env.REDIS_PORT).toBe('6380');
+      expect(process.env.BCRYPT_SALT_ROUNDS).toBe('14');
     });
   });
 
-  describe('event handling', () => {
-    it('should handle configuration change events', async () => {
-      await authModule.onInit(mockApp);
-      
-      // Find the config change handler
-      const configHandler = mockApp.on.mock.calls.find(
-        call => call[0] === 'config:changed'
+  describe('initialize', () => {
+    it('should setup Express middleware', () => {
+      authModule.initialize(mockApp);
+
+      expect(mockApp.use).toHaveBeenCalledWith('cors-middleware');
+      expect(mockApp.use).toHaveBeenCalledWith('/api/auth', 'auth-router');
+      expect(mockApp.use).toHaveBeenCalledWith('/api', 'rate-limiter');
+      expect(mockApp.use).toHaveBeenCalledWith(expect.any(Function)); // authErrorHandler
+      expect(consoleLogSpy).toHaveBeenCalledWith('🔐 Authentication module initialized');
+    });
+
+    it('should skip rate limiting when disabled', () => {
+      const customModule = new AuthModule({ enableRateLimiting: false });
+      customModule.initialize(mockApp);
+
+      const rateLimiterCall = (mockApp.use as jest.Mock).mock.calls.find(
+        call => call[1] === 'rate-limiter'
       );
-      
-      expect(configHandler).toBeDefined();
-      
-      // Test the handler
-      if (configHandler) {
-        const handler = configHandler[1];
-        const event = {
-          module: 'auth',
-          config: {
-            jwt: { expiresIn: '1h' }
-          }
-        };
-        
-        handler(event);
-        
-        expect(authModule.config.jwt.expiresIn).toBe('1h');
-      }
-    });
-
-    it('should ignore config changes for other modules', async () => {
-      await authModule.onInit(mockApp);
-      
-      const configHandler = mockApp.on.mock.calls.find(
-        call => call[0] === 'config:changed'
-      )[1];
-      
-      const originalConfig = { ...authModule.config };
-      
-      configHandler({
-        module: 'other-module',
-        config: { jwt: { expiresIn: '1h' } }
-      });
-      
-      expect(authModule.config).toEqual(originalConfig);
+      expect(rateLimiterCall).toBeUndefined();
     });
   });
 
-  describe('health check', () => {
-    it('should report healthy when service is running', async () => {
-      authModule['authService'] = {
-        isHealthy: jest.fn().mockResolvedValue(true)
-      } as any;
-      
-      const health = await authModule.healthCheck();
-      
-      expect(health.status).toBe('healthy');
-      expect(health.service).toBe('auth');
+  describe('getters', () => {
+    it('should return auth service', () => {
+      const service = authModule.getAuthService();
+      expect(service).toBe(authModule['authService']);
     });
 
-    it('should report unhealthy when service is not running', async () => {
-      authModule['authService'] = {
-        isHealthy: jest.fn().mockResolvedValue(false)
-      } as any;
-      
-      const health = await authModule.healthCheck();
-      
-      expect(health.status).toBe('unhealthy');
-      expect(health.service).toBe('auth');
+    it('should return auth middleware', () => {
+      const middleware = authModule.getAuthMiddleware();
+      expect(middleware).toBe(authModule['authMiddleware']);
     });
 
-    it('should report unhealthy when service is not initialized', async () => {
-      authModule['authService'] = undefined;
+    it('should return auth routes', () => {
+      const routes = authModule.getAuthRoutes();
+      expect(routes).toBe(authModule['authRoutes']);
+    });
+  });
+
+  describe('router creation methods', () => {
+    let mockRouter: any;
+
+    beforeEach(() => {
+      mockRouter = { use: jest.fn() };
+      jest.doMock('express', () => ({
+        Router: jest.fn(() => mockRouter)
+      }));
+    });
+
+    afterEach(() => {
+      jest.dontMock('express');
+    });
+
+    it('should create protected router', () => {
+      const router = authModule.createProtectedRouter();
+      expect(mockRouter.use).toHaveBeenCalledWith('require-auth');
+    });
+
+    it('should create permission router', () => {
+      const permissions = ['read:users', 'write:users'];
+      const router = authModule.createPermissionRouter(permissions);
       
-      const health = await authModule.healthCheck();
+      expect(mockRouter.use).toHaveBeenCalledWith('require-auth');
+      expect(mockRouter.use).toHaveBeenCalledWith('require-permissions');
+    });
+
+    it('should create role router', () => {
+      const roles = ['admin', 'moderator'];
+      const router = authModule.createRoleRouter(roles);
       
-      expect(health.status).toBe('unhealthy');
-      expect(health.service).toBe('auth');
-      expect(health.error).toBe('Service not initialized');
+      expect(mockRouter.use).toHaveBeenCalledWith('require-auth');
+      expect(mockRouter.use).toHaveBeenCalledWith('require-roles');
+    });
+
+    it('should create API key router', () => {
+      const router = authModule.createApiKeyRouter();
+      expect(mockRouter.use).toHaveBeenCalledWith('require-api-key');
+    });
+
+    it('should create optional auth router', () => {
+      const router = authModule.createOptionalAuthRouter();
+      expect(mockRouter.use).toHaveBeenCalledWith('optional-auth');
+    });
+  });
+
+  describe('cleanup tasks', () => {
+    let setIntervalSpy: jest.SpyInstance;
+    let mockAuthService: any;
+
+    beforeEach(() => {
+      setIntervalSpy = jest.spyOn(global, 'setInterval').mockImplementation();
+      mockAuthService = {
+        performCleanup: jest.fn().mockResolvedValue(undefined)
+      };
+    });
+
+    afterEach(() => {
+      setIntervalSpy.mockRestore();
+    });
+
+    it('should start cleanup tasks', () => {
+      const mockPerformCleanup = jest.fn();
+      (authModule.getAuthService().performCleanup as jest.Mock) = mockPerformCleanup;
+
+      authModule.startCleanupTasks();
+
+      expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60 * 60 * 1000);
+      expect(consoleLogSpy).toHaveBeenCalledWith('🧹 Authentication cleanup tasks started');
+    });
+
+    it('should handle cleanup errors', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const mockPerformCleanup = jest.fn().mockRejectedValue(new Error('Cleanup failed'));
+      (authModule.getAuthService().performCleanup as jest.Mock) = mockPerformCleanup;
+
+      authModule.startCleanupTasks();
+
+      // Get the interval callback
+      const intervalCallback = setIntervalSpy.mock.calls[0][0];
+      await intervalCallback();
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Authentication cleanup error:', expect.any(Error));
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('shutdown', () => {
+    it('should perform cleanup on shutdown', async () => {
+      const mockPerformCleanup = jest.fn().mockResolvedValue(undefined);
+      (authModule.getAuthService().performCleanup as jest.Mock) = mockPerformCleanup;
+
+      await authModule.shutdown();
+
+      expect(mockPerformCleanup).toHaveBeenCalled();
+      expect(consoleLogSpy).toHaveBeenCalledWith('🔐 Authentication module shutdown complete');
+    });
+
+    it('should handle shutdown errors', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const mockPerformCleanup = jest.fn().mockRejectedValue(new Error('Shutdown failed'));
+      (authModule.getAuthService().performCleanup as jest.Mock) = mockPerformCleanup;
+
+      await authModule.shutdown();
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Error during authentication module shutdown:', expect.any(Error));
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('factory functions', () => {
+    it('should create auth module with factory function', () => {
+      const config = { jwtSecret: 'factory-secret' };
+      const module = createAuthModule(config);
+
+      expect(module).toBeInstanceOf(AuthModule);
+      expect(module['config']).toEqual(config);
+    });
+
+    it('should use authentication with Express app', () => {
+      const module = useAuthentication(mockApp);
+
+      expect(module).toBeInstanceOf(AuthModule);
+      expect(mockApp.use).toHaveBeenCalled();
+    });
+
+    it('should merge default config in useAuthentication', () => {
+      const customConfig = { jwtSecret: 'custom' };
+      const module = useAuthentication(mockApp, customConfig);
+
+      expect(module['config']).toMatchObject({
+        ...DEFAULT_AUTH_CONFIG,
+        ...customConfig
+      });
+    });
+  });
+
+  describe('OAuth configuration', () => {
+    it('should set OAuth environment variables', () => {
+      const config = {
+        googleClientId: 'google-id',
+        googleClientSecret: 'google-secret',
+        googleRedirectUri: 'google-redirect',
+        githubClientId: 'github-id',
+        githubClientSecret: 'github-secret',
+        githubRedirectUri: 'github-redirect',
+        microsoftClientId: 'ms-id',
+        microsoftClientSecret: 'ms-secret',
+        microsoftRedirectUri: 'ms-redirect',
+        discordClientId: 'discord-id',
+        discordClientSecret: 'discord-secret',
+        discordRedirectUri: 'discord-redirect'
+      };
+
+      new AuthModule(config);
+
+      expect(process.env.GOOGLE_CLIENT_ID).toBe('google-id');
+      expect(process.env.GOOGLE_CLIENT_SECRET).toBe('google-secret');
+      expect(process.env.GOOGLE_REDIRECT_URI).toBe('google-redirect');
+      expect(process.env.GITHUB_CLIENT_ID).toBe('github-id');
+      expect(process.env.GITHUB_CLIENT_SECRET).toBe('github-secret');
+      expect(process.env.GITHUB_REDIRECT_URI).toBe('github-redirect');
+      expect(process.env.MICROSOFT_CLIENT_ID).toBe('ms-id');
+      expect(process.env.MICROSOFT_CLIENT_SECRET).toBe('ms-secret');
+      expect(process.env.MICROSOFT_REDIRECT_URI).toBe('ms-redirect');
+      expect(process.env.DISCORD_CLIENT_ID).toBe('discord-id');
+      expect(process.env.DISCORD_CLIENT_SECRET).toBe('discord-secret');
+      expect(process.env.DISCORD_REDIRECT_URI).toBe('discord-redirect');
+    });
+  });
+
+  describe('CORS and security configuration', () => {
+    it('should set allowed origins', () => {
+      const config = {
+        allowedOrigins: ['http://localhost:3000', 'https://app.example.com']
+      };
+
+      new AuthModule(config);
+
+      expect(process.env.ALLOWED_ORIGINS).toBe('http://localhost:3000,https://app.example.com');
+    });
+
+    it('should set API key configuration', () => {
+      const config = {
+        apiKeyPrefix: 'test_',
+        apiKeyLength: 48
+      };
+
+      new AuthModule(config);
+
+      expect(process.env.API_KEY_PREFIX).toBe('test_');
+      expect(process.env.API_KEY_LENGTH).toBe('48');
     });
   });
 });
+
+// Note: Express Router is mocked only within the test context, not globally

@@ -69,7 +69,7 @@ describe('Monitoring Integration Tests', () => {
 
   describe('Structured Logging', () => {
     it('should log with correlation ID', () => {
-      const mockLog = jest.spyOn(console, 'log').mockImplementation();
+      const mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       logger.info('Test message', {
         correlationId: 'test-correlation-id',
@@ -82,7 +82,7 @@ describe('Monitoring Integration Tests', () => {
     });
 
     it('should log errors with stack traces', () => {
-      const mockLog = jest.spyOn(console, 'log').mockImplementation();
+      const mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
       const testError = new Error('Test error');
       
       logger.error('Error occurred', testError, {
@@ -350,7 +350,7 @@ describe('Monitoring Integration Tests', () => {
 
   describe('Error Handler Integration', () => {
     it('should log errors through integration', () => {
-      const mockLog = jest.spyOn(console, 'log').mockImplementation();
+      const mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
       const testError = new Error('Integration test error');
       
       errorIntegration.logError(testError, {
