@@ -87,7 +87,17 @@ describe('Server Startup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
-    mockApp = (express as jest.MockedFunction<typeof express>)();
+    
+    // Need to reset the express mock to return a fresh mockApp
+    const newMockApp = {
+      use: jest.fn(),
+      get: jest.fn(),
+      listen: jest.fn((port, callback) => callback()),
+      set: jest.fn()
+    };
+    (express as jest.MockedFunction<typeof express>).mockReturnValue(newMockApp as any);
+    mockApp = newMockApp;
+    
     console.log = jest.fn();
     console.error = jest.fn();
     
@@ -105,7 +115,7 @@ describe('Server Startup', () => {
 
   describe('server configuration', () => {
     it('should use default port when PORT env is not set', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       expect(mockApp.listen).toHaveBeenCalledWith(3003, expect.any(Function));
     });
 
@@ -117,7 +127,7 @@ describe('Server Startup', () => {
     });
 
     it('should configure all security middleware', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
       // Check that helmet was configured
       const helmetModule = require('helmet');
@@ -134,7 +144,7 @@ describe('Server Startup', () => {
     });
 
     it('should configure CORS with default origins', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
       const corsModule = require('cors');
       expect(corsModule).toHaveBeenCalledWith({
@@ -167,30 +177,21 @@ describe('Server Startup', () => {
     });
 
     it('should apply security headers', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
+      
       const { securityHeaders } = require('../security/infrastructure/middleware/security.middleware');
       expect(mockApp.use).toHaveBeenCalledWith(securityHeaders);
     });
 
     it('should apply rate limiting', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
+      
       const { rateLimiters } = require('../security/infrastructure/middleware/security.middleware');
       expect(mockApp.use).toHaveBeenCalledWith(rateLimiters.api);
     });
 
-    it('should apply rate limiting middleware', async () => {
-      const startServerModule = await import('../start-server');
-      const { rateLimiters } = require('../security/infrastructure/middleware/security.middleware');
-      
-      // Should have been called with rate limiter
-      const rateLimiterCalls = (mockApp.use as jest.Mock).mock.calls.filter(
-        call => call[0] === rateLimiters.api
-      );
-      expect(rateLimiterCalls).toHaveLength(1);
-    });
-
     it('should mount all routers', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
       const { itemRouter } = require('../items/infrastructure/http/item.routes');
       const { messageRouter } = require('../messages/infrastructure/http/message.routes');
@@ -208,7 +209,7 @@ describe('Server Startup', () => {
 
 
     it('should log successful startup', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
       expect(console.log).toHaveBeenCalledWith('✅ Semantest Node.js Server started');
       expect(console.log).toHaveBeenCalledWith(
@@ -236,52 +237,85 @@ describe('Server Startup', () => {
     });
 
     it('should handle error middleware', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
       // Find the error handler middleware (4 parameters)
       const errorHandlerCalls = (mockApp.use as jest.Mock).mock.calls.filter(
-        call => call[0] && call[0].length === 4
+        call => call[0] && typeof call[0] === 'function' && call[0].length === 4
       );
       
       expect(errorHandlerCalls).toHaveLength(1);
     });
 
     it('should handle 404 errors', async () => {
-      const startServerModule = await import('../start-server');
+      await import('../start-server');
       
-      // Find the 404 handler
-      const notFoundHandlerCalls = (mockApp.use as jest.Mock).mock.calls.filter(
-        call => call[0] && call[0].name === 'notFoundHandler'
+      // Find the 404 handler (should be registered with '*' path)
+      const catchAllCalls = (mockApp.use as jest.Mock).mock.calls.filter(
+        call => call[0] === '*'
       );
       
       // Should have a catch-all route handler
-      expect(mockApp.use).toHaveBeenCalled();
+      expect(catchAllCalls).toHaveLength(1);
     });
 
     it('should seed test data in non-production environment', async () => {
-      delete process.env.NODE_ENV;  // Not production
-      jest.resetModules();
+      // Keep NODE_ENV as test (not production)
+      process.env.NODE_ENV = 'test';
       
-      const { seedTestData } = require('../items/infrastructure/http/item.routes');
-      const startServerModule = await import('../start-server');
+      // Track if seedTestData was called
+      let seedTestDataCalled = false;
+      jest.doMock('../items/infrastructure/http/item.routes', () => ({
+        itemRouter: {
+          get: jest.fn(),
+          post: jest.fn(),
+          put: jest.fn(),
+          patch: jest.fn(),
+          delete: jest.fn(),
+          use: jest.fn()
+        },
+        seedTestData: jest.fn().mockImplementation(() => {
+          seedTestDataCalled = true;
+          return Promise.resolve();
+        })
+      }));
+      
+      jest.resetModules();
+      await import('../start-server');
       
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise(resolve => setTimeout(resolve, 50));
       
-      expect(seedTestData).toHaveBeenCalled();
+      expect(seedTestDataCalled).toBe(true);
     });
 
     it('should not seed test data in production environment', async () => {
       process.env.NODE_ENV = 'production';
-      jest.resetModules();
       
-      const { seedTestData } = require('../items/infrastructure/http/item.routes');
-      const startServerModule = await import('../start-server');
+      // Track if seedTestData was called
+      let seedTestDataCalled = false;
+      jest.doMock('../items/infrastructure/http/item.routes', () => ({
+        itemRouter: {
+          get: jest.fn(),
+          post: jest.fn(),
+          put: jest.fn(),
+          patch: jest.fn(),
+          delete: jest.fn(),
+          use: jest.fn()
+        },
+        seedTestData: jest.fn().mockImplementation(() => {
+          seedTestDataCalled = true;
+          return Promise.resolve();
+        })
+      }));
+      
+      jest.resetModules();
+      await import('../start-server');
       
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise(resolve => setTimeout(resolve, 50));
       
-      expect(seedTestData).not.toHaveBeenCalled();
+      expect(seedTestDataCalled).toBe(false);
     });
   });
 });
