@@ -269,4 +269,105 @@ describe('DownloadQueueManager', () => {
       expect(true).toBe(true); // Placeholder
     });
   });
+
+  describe('queue capacity', () => {
+    it('should reject new items when queue is at capacity', async () => {
+      // Arrange
+      const queueWithCapacity = new DownloadQueueManager({
+        maxConcurrent: 0,
+        rateLimit: 5,
+        processingTimeout: 1000,
+        maxQueueSize: 3 // Set a small capacity for testing
+      });
+
+      // Act - Fill the queue to capacity
+      await queueWithCapacity.enqueue({ url: 'https://example.com/1.jpg' });
+      await queueWithCapacity.enqueue({ url: 'https://example.com/2.jpg' });
+      await queueWithCapacity.enqueue({ url: 'https://example.com/3.jpg' });
+
+      // Assert - Next enqueue should throw
+      await expect(
+        queueWithCapacity.enqueue({ url: 'https://example.com/4.jpg' })
+      ).rejects.toThrow('Queue is at capacity (3 items). Cannot accept new items.');
+
+      // Clean up
+      queueWithCapacity.removeAllListeners();
+      queueWithCapacity.stopProcessing();
+    });
+
+    it('should emit queue:capacity:reached event when at capacity', async () => {
+      // Arrange
+      const queueWithCapacity = new DownloadQueueManager({
+        maxConcurrent: 0,
+        rateLimit: 5,
+        processingTimeout: 1000,
+        maxQueueSize: 2
+      });
+
+      let capacityReachedEvent = null;
+      queueWithCapacity.on('queue:capacity:reached', (status) => {
+        capacityReachedEvent = status;
+      });
+
+      // Act
+      await queueWithCapacity.enqueue({ url: 'https://example.com/1.jpg' });
+      await queueWithCapacity.enqueue({ url: 'https://example.com/2.jpg' });
+
+      // Assert
+      expect(capacityReachedEvent).toBeTruthy();
+      expect(capacityReachedEvent.currentSize).toBe(2);
+      expect(capacityReachedEvent.maxSize).toBe(2);
+
+      // Clean up
+      queueWithCapacity.removeAllListeners();
+      queueWithCapacity.stopProcessing();
+    });
+
+    it('should accept new items after processing frees up space', async () => {
+      // Arrange
+      const queueWithCapacity = new DownloadQueueManager({
+        maxConcurrent: 1,
+        rateLimit: 5,
+        processingTimeout: 1000,
+        maxQueueSize: 2
+      });
+
+      // Stop automatic processing
+      queueWithCapacity.stopProcessing();
+
+      // Set up processing handler
+      queueWithCapacity.on('queue:process', (queueItem) => {
+        setTimeout(() => {
+          queueWithCapacity.completeProcessing(queueItem.id, { downloadedPath: '/tmp/test.jpg' });
+        }, 50);
+      });
+
+      // Act - Fill queue to capacity
+      const item1 = await queueWithCapacity.enqueue({ url: 'https://example.com/1.jpg' });
+      const item2 = await queueWithCapacity.enqueue({ url: 'https://example.com/2.jpg' });
+
+      // Verify queue is at capacity
+      await expect(
+        queueWithCapacity.enqueue({ url: 'https://example.com/3.jpg' })
+      ).rejects.toThrow('Queue is at capacity');
+
+      // Process one item manually
+      // @ts-ignore - accessing private method for test
+      await queueWithCapacity.processNext();
+      
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Now should be able to add another item
+      const item3 = await queueWithCapacity.enqueue({ url: 'https://example.com/3.jpg' });
+
+      // Assert
+      expect(item3).toBeDefined();
+      expect(item3.status).toBe('pending');
+
+      // Clean up
+      queueWithCapacity.removeAllListeners();
+      queueWithCapacity.stopProcessing();
+    });
+  });
 });
