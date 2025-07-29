@@ -26,8 +26,8 @@ describe('AI Tool Events', () => {
       const event = new AIToolActivatingEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         'explicit_prompt',
+        'queue-789',
         { context: 'test' }
       );
 
@@ -44,7 +44,6 @@ describe('AI Tool Events', () => {
       const event = new AIToolActivatingEvent(
         'tool-123',
         'addon-456',
-        undefined,
         'ui_button'
       );
 

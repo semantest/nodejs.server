@@ -15,8 +15,8 @@ export class AIToolActivatingEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly activationMethod: ActivationMethod,
+    public readonly queueItemId?: string,
     public readonly metadata?: Record<string, any>
   ) {
     super();
@@ -32,9 +32,9 @@ export class AIToolActivatedEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly activationDuration: number,
-    public readonly confirmationSignals: string[]
+    public readonly confirmationSignals: string[],
+    public readonly queueItemId?: string
   ) {
     super();
   }
