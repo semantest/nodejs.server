@@ -39,6 +39,7 @@ describe('Message Routes', () => {
     
     // Add error handler
     app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      console.error('Route error:', err);
       res.status(500).json({ error: err.message });
     });
   });
@@ -208,7 +209,10 @@ describe('Message Routes', () => {
         .expect(200);
       
       expect(mockMessageRepository.findById).toHaveBeenCalledWith('msg-123');
-      expect(response.body.message).toEqual(mockMessage);
+      expect(response.body.message).toEqual({
+        ...mockMessage,
+        timestamp: mockMessage.timestamp.toISOString()
+      });
       expect(response.body).toHaveProperty('timestamp');
     });
 
@@ -279,9 +283,13 @@ describe('Message Routes', () => {
       mockMessageRepository.findByQuery.mockResolvedValue(mockMessages);
       
       const response = await request(app)
-        .get('/messages/namespaces')
-        .expect(200);
+        .get('/messages/namespaces');
       
+      if (response.status !== 200) {
+        console.error('Namespaces error:', response.body);
+      }
+      
+      expect(response.status).toBe(200);
       expect(mockMessageRepository.findByQuery).toHaveBeenCalledWith({ limit: 1000 });
       expect(response.body.namespaces).toEqual(['production', 'test']);
       expect(response.body.count).toBe(2);
