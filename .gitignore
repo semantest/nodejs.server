@@ -45,3 +45,6 @@ tmp/
 temp/
 *.tmp
 *.tempsemantest/
+
+# Architecture session files
+ARCHITECTURE_*.md
