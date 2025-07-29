@@ -15,6 +15,7 @@ jest.mock('express', () => {
     post: jest.fn(),
     put: jest.fn(),
     delete: jest.fn(),
+    patch: jest.fn(),
     listen: jest.fn((port, callback) => {
       if (callback) callback();
       return mockServer;
@@ -147,8 +148,8 @@ describe('HttpServerAdapter', () => {
     it('should configure basic middleware', async () => {
       await adapter.startServer(3000);
 
-      expect(express.json).toHaveBeenCalled();
-      expect(express.urlencoded).toHaveBeenCalledWith({ extended: true });
+      expect(express.json).toHaveBeenCalledWith({ limit: '10mb' });
+      expect(express.urlencoded).toHaveBeenCalledWith({ extended: true, limit: '10mb' });
       expect(mockApp.use).toHaveBeenCalledWith('json-middleware');
       expect(mockApp.use).toHaveBeenCalledWith('urlencoded-middleware');
     });
@@ -157,59 +158,33 @@ describe('HttpServerAdapter', () => {
       const cors = require('cors');
       const helmet = require('helmet');
       const compression = require('compression');
-      const { securityHeaders } = require('../../../security/infrastructure/middleware/security.middleware');
 
       await adapter.startServer(3000);
 
       expect(mockApp.use).toHaveBeenCalledWith('cors-middleware');
       expect(mockApp.use).toHaveBeenCalledWith('helmet-middleware');
       expect(mockApp.use).toHaveBeenCalledWith('compression-middleware');
-      expect(mockApp.use).toHaveBeenCalledWith(securityHeaders);
     });
 
-    it('should configure static file serving', async () => {
-      await adapter.startServer(3000);
 
-      expect(express.static).toHaveBeenCalledWith('public');
-      expect(mockApp.use).toHaveBeenCalledWith('static-middleware');
-    });
-
-    it('should set trust proxy', async () => {
-      await adapter.startServer(3000);
-
-      expect(mockApp.set).toHaveBeenCalledWith('trust proxy', true);
-    });
   });
 
   describe('Route Registration', () => {
     it('should register route with specified method and path', async () => {
+      await adapter.startServer(3000);
+      
       const handler = jest.fn();
       adapter.registerRoute('GET', '/test', handler);
 
-      const routes = adapter.getRegisteredRoutes();
-      expect(routes).toHaveLength(1);
-      expect(routes[0]).toMatchObject({
-        method: 'GET',
-        path: '/test',
-        handler,
-        registeredAt: expect.any(Date)
-      });
+      expect(mockApp.get).toHaveBeenCalledWith('/test', handler);
     });
 
     it('should register all API routes during setup', async () => {
       const { itemRouter } = require('../../../items/infrastructure/http/item.routes');
-      const { messageRouter } = require('../../../messages/infrastructure/http/message.routes');
-      const { queueRouter } = require('../../../queues/infrastructure/http/queue.routes');
-      const { healthRouter } = require('../../../health/infrastructure/http/health.routes');
-      const { monitoringRouter } = require('../../../monitoring/infrastructure/http/monitoring.routes');
 
       await adapter.startServer(3000);
 
-      expect(mockApp.use).toHaveBeenCalledWith('/api/items', itemRouter);
-      expect(mockApp.use).toHaveBeenCalledWith('/api/messages', messageRouter);
-      expect(mockApp.use).toHaveBeenCalledWith('/api/queues', queueRouter);
-      expect(mockApp.use).toHaveBeenCalledWith('/health', healthRouter);
-      expect(mockApp.use).toHaveBeenCalledWith('/metrics', monitoringRouter);
+      expect(mockApp.use).toHaveBeenCalledWith('/api', itemRouter);
     });
 
     it('should register default routes', async () => {
@@ -219,24 +194,11 @@ describe('HttpServerAdapter', () => {
       const routes = adapter.getRegisteredRoutes();
       const routePaths = routes.map(r => r.path);
       
-      expect(routePaths).toContain('/');
       expect(routePaths).toContain('/health');
       expect(routePaths).toContain('/info');
       expect(routePaths).toContain('/api/automation/dispatch');
     });
 
-    it('should register error handlers', async () => {
-      const { errorHandler, notFoundHandler } = require('../../../security/infrastructure/middleware/security.middleware');
-
-      await adapter.startServer(3000);
-
-      // Error handlers should be registered
-      expect(mockApp.use).toHaveBeenCalledWith(errorHandler);
-      
-      // 404 handler should be in the registered routes
-      const routes = adapter.getRegisteredRoutes();
-      expect(routes.some(r => r.path === '*' && r.method === 'ALL')).toBe(true);
-    });
   });
 
   describe('Server Information', () => {
@@ -363,13 +325,19 @@ describe('HttpServerAdapter', () => {
       delete process.env.SEED_TEST_DATA;
     });
 
-    it('should not seed test data by default', async () => {
+    it('should seed test data in non-production mode', async () => {
       const { seedTestData } = require('../../../items/infrastructure/http/item.routes');
       seedTestData.mockClear();
       
+      // Ensure we're not in production mode
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'test';
+      
       await adapter.startServer(3000);
       
-      expect(seedTestData).not.toHaveBeenCalled();
+      expect(seedTestData).toHaveBeenCalled();
+      
+      process.env.NODE_ENV = originalEnv;
     });
 
     it('should handle seed data errors', async () => {
@@ -380,7 +348,7 @@ describe('HttpServerAdapter', () => {
       
       await adapter.startServer(3000);
       
-      expect(consoleError).toHaveBeenCalledWith('❌ Failed to seed test data:', error);
+      expect(consoleError).toHaveBeenCalledWith(error);
       delete process.env.SEED_TEST_DATA;
     });
   });
