@@ -218,7 +218,10 @@ describe('ItemService', () => {
       expect(result).toEqual(updatedItem);
       expect(mockRepository.findById).toHaveBeenCalledWith('item-123');
       expect(mockRepository.update).toHaveBeenCalledWith('item-123', expect.any(Object));
-      expect(mockRepository.saveHistoryEntry).toHaveBeenCalled();
+      expect(mockRepository.saveHistoryEntry).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'updated',
+        userId: 'user-123'
+      }));
     });
 
     it('should return null when updating non-existent item', async () => {

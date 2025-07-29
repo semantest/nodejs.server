@@ -139,7 +139,7 @@ describe('HttpServerAdapter', () => {
 
       await adapter.startServer(3000);
       await expect(adapter.stopServer()).rejects.toThrow('Close failed');
-      expect(consoleError).toHaveBeenCalledWith('❌ Failed to stop HTTP server:', error);
+      expect(consoleError).toHaveBeenCalledWith('❌ Error stopping HTTP server:', error);
     });
   });
 

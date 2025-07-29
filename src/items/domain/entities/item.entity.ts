@@ -183,10 +183,17 @@ export class ItemEntity implements Item {
    * Create from plain object
    */
   public static fromJSON(data: Item, history?: ItemHistoryEntry[]): ItemEntity {
-    const entity = new ItemEntity(data);
-    if (history) {
-      entity.history = history;
-    }
+    const entity = Object.create(ItemEntity.prototype);
+    entity.id = data.id;
+    entity.name = data.name;
+    entity.description = data.description;
+    entity.status = data.status;
+    entity.tags = data.tags || [];
+    entity.metadata = data.metadata || {};
+    entity.createdAt = data.createdAt;
+    entity.updatedAt = data.updatedAt;
+    entity.version = data.version;
+    entity.history = history || [];
     return entity;
   }
 }

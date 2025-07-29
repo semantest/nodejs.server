@@ -84,6 +84,7 @@ export class ItemService {
 
     // Load existing history
     const existingHistory = await this.repository.getHistory(itemId);
+    const existingHistoryCount = existingHistory.length;
     
     // Create entity from existing data
     const entity = ItemEntity.fromJSON(existingItem, existingHistory);
@@ -96,9 +97,13 @@ export class ItemService {
 
     // Save new history entries
     const newHistory = entity.getHistory();
-    const lastHistoryEntry = newHistory[newHistory.length - 1];
-    if (lastHistoryEntry && lastHistoryEntry.timestamp > (existingHistory[0]?.timestamp || new Date(0))) {
-      await this.repository.saveHistoryEntry(lastHistoryEntry);
+    const newEntryCount = newHistory.length - existingHistoryCount;
+    if (newEntryCount > 0) {
+      // Save only the new entries
+      const newEntries = newHistory.slice(-newEntryCount);
+      for (const entry of newEntries) {
+        await this.repository.saveHistoryEntry(entry);
+      }
     }
 
     return updatedItem;
