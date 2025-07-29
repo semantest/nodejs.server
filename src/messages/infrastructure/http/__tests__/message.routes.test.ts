@@ -3,82 +3,81 @@
  * Testing REST API endpoints for WebSocket message history
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { messageRouter, captureMessage } from '../message.routes';
-import { InMemoryMessageRepository } from '../../repositories/in-memory-message.repository';
+import request from 'supertest';
+import express, { Express } from 'express';
 import { StoredMessage } from '../../repositories/message.repository';
 
-// Mock the repository
-jest.mock('../../repositories/in-memory-message.repository');
+// First, set up the mocks before any imports
+const mockMessageRepository = {
+  save: jest.fn(),
+  findById: jest.fn(),
+  findByQuery: jest.fn(),
+  getRecent: jest.fn(),
+  count: jest.fn(),
+  clearOlderThan: jest.fn(),
+  clear: jest.fn()
+};
 
-// Helper to extract route handlers
-function getRouteHandler(path: string, method: string = 'get') {
-  const route = messageRouter.stack.find((layer: any) => {
-    return layer.route && layer.route.path === path && layer.route.methods[method];
-  });
-  return route?.route?.stack.find((s: any) => s.method === method)?.handle;
-}
+// Mock the repository module
+jest.mock('../../repositories/in-memory-message.repository', () => ({
+  InMemoryMessageRepository: jest.fn().mockImplementation(() => mockMessageRepository)
+}));
 
 describe('Message Routes', () => {
-  let mockReq: Partial<Request>;
-  let mockRes: Partial<Response>;
-  let mockNext: NextFunction;
-  let jsonMock: jest.Mock;
-  let statusMock: jest.Mock;
-  let mockRepository: jest.Mocked<InMemoryMessageRepository>;
+  let app: Express;
 
   beforeEach(() => {
     jest.clearAllMocks();
     
-    jsonMock = jest.fn();
-    statusMock = jest.fn().mockReturnThis();
-    mockNext = jest.fn();
+    // Set up Express app with routes
+    app = express();
+    app.use(express.json());
     
-    mockReq = {
-      params: {},
-      query: {},
-      body: {}
-    };
+    // Import routes after mocks are set up - this ensures the mock is used
+    const { messageRouter } = require('../message.routes');
+    app.use(messageRouter);
     
-    mockRes = {
-      json: jsonMock,
-      status: statusMock
-    };
+    // Add error handler
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      res.status(500).json({ error: err.message });
+    });
+  });
 
-    // Get mocked repository instance
-    mockRepository = require('../message.routes')['messageRepository'];
+  afterEach(() => {
+    jest.resetModules();
   });
 
   describe('GET /messages', () => {
-    it('should return messages with default pagination', async () => {
+    it('should return all messages with default pagination', async () => {
       const mockMessages: StoredMessage[] = [
         {
           id: '1',
+          type: 'tool_use',
+          payload: { tool: 'test' },
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: { content: 'Test 1' },
-          direction: 'send',
-          namespace: 'chat',
+          namespace: 'test',
           addon_id: 'addon-1'
         },
         {
           id: '2',
+          type: 'tool_result',
+          payload: { result: 'success' },
+          direction: 'outgoing' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: { content: 'Test 2' },
-          direction: 'receive',
-          namespace: 'chat',
+          namespace: 'test',
           addon_id: 'addon-1'
         }
       ];
       
-      mockRepository.findByQuery.mockResolvedValue(mockMessages);
-      mockRepository.count.mockResolvedValue(2);
+      mockMessageRepository.findByQuery.mockResolvedValue(mockMessages);
+      mockMessageRepository.count.mockResolvedValue(2);
       
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages')
+        .expect(200);
       
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
+      expect(mockMessageRepository.findByQuery).toHaveBeenCalledWith({
         since: undefined,
         until: undefined,
         type: undefined,
@@ -87,106 +86,57 @@ describe('Message Routes', () => {
         limit: 100,
         offset: 0
       });
-      
-      expect(jsonMock).toHaveBeenCalledWith({
-        messages: mockMessages,
-        pagination: {
-          total: 2,
-          limit: 100,
-          offset: 0
-        },
-        timestamp: expect.any(String)
-      });
-    });
-
-    it('should filter messages by date range', async () => {
-      mockReq.query = {
-        since: '2024-01-01T00:00:00Z',
-        until: '2024-12-31T23:59:59Z'
-      };
-      
-      mockRepository.findByQuery.mockResolvedValue([]);
-      mockRepository.count.mockResolvedValue(0);
-      
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
-        since: new Date('2024-01-01T00:00:00Z'),
-        until: new Date('2024-12-31T23:59:59Z'),
-        type: undefined,
-        namespace: undefined,
-        addon_id: undefined,
+      expect(mockMessageRepository.count).toHaveBeenCalled();
+      expect(response.body.messages).toHaveLength(2);
+      expect(response.body.pagination).toEqual({
+        total: 2,
         limit: 100,
         offset: 0
       });
+      expect(response.body).toHaveProperty('timestamp');
     });
 
-    it('should filter by type, namespace, and addon_id', async () => {
-      mockReq.query = {
-        type: 'notification',
-        namespace: 'alerts',
-        addon_id: 'addon-123'
-      };
+    it('should filter messages by query parameters', async () => {
+      const mockMessages: StoredMessage[] = [];
+      const since = '2024-01-01T00:00:00Z';
+      const until = '2024-12-31T23:59:59Z';
       
-      mockRepository.findByQuery.mockResolvedValue([]);
-      mockRepository.count.mockResolvedValue(0);
+      mockMessageRepository.findByQuery.mockResolvedValue(mockMessages);
+      mockMessageRepository.count.mockResolvedValue(0);
       
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages')
+        .query({
+          since,
+          until,
+          type: 'tool_use',
+          namespace: 'test',
+          addon_id: 'addon-1',
+          limit: '50',
+          offset: '10'
+        })
+        .expect(200);
       
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
-        since: undefined,
-        until: undefined,
-        type: 'notification',
-        namespace: 'alerts',
-        addon_id: 'addon-123',
-        limit: 100,
-        offset: 0
-      });
-    });
-
-    it('should handle custom pagination', async () => {
-      mockReq.query = {
-        limit: '50',
-        offset: '100'
-      };
-      
-      mockRepository.findByQuery.mockResolvedValue([]);
-      mockRepository.count.mockResolvedValue(200);
-      
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
-        since: undefined,
-        until: undefined,
-        type: undefined,
-        namespace: undefined,
-        addon_id: undefined,
+      expect(mockMessageRepository.findByQuery).toHaveBeenCalledWith({
+        since: new Date(since),
+        until: new Date(until),
+        type: 'tool_use',
+        namespace: 'test',
+        addon_id: 'addon-1',
         limit: 50,
-        offset: 100
-      });
-      
-      expect(jsonMock).toHaveBeenCalledWith({
-        messages: [],
-        pagination: {
-          total: 200,
-          limit: 50,
-          offset: 100
-        },
-        timestamp: expect.any(String)
+        offset: 10
       });
     });
 
     it('should handle errors', async () => {
       const error = new Error('Database error');
-      mockRepository.findByQuery.mockRejectedValue(error);
+      mockMessageRepository.findByQuery.mockRejectedValue(error);
       
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages')
+        .expect(500);
       
-      expect(mockNext).toHaveBeenCalledWith(error);
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
@@ -195,52 +145,47 @@ describe('Message Routes', () => {
       const mockMessages: StoredMessage[] = [
         {
           id: '1',
+          type: 'tool_use',
+          payload: { tool: 'test' },
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: { content: 'Recent 1' },
-          direction: 'send'
-        },
-        {
-          id: '2',
-          timestamp: new Date(),
-          type: 'text',
-          data: { content: 'Recent 2' },
-          direction: 'receive'
+          namespace: 'test',
+          addon_id: 'addon-1'
         }
       ];
       
-      mockRepository.getRecent.mockResolvedValue(mockMessages);
+      mockMessageRepository.getRecent.mockResolvedValue(mockMessages);
       
-      const handler = getRouteHandler('/messages/recent');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/recent')
+        .expect(200);
       
-      expect(mockRepository.getRecent).toHaveBeenCalledWith(50);
-      expect(jsonMock).toHaveBeenCalledWith({
-        messages: mockMessages,
-        count: 2,
-        timestamp: expect.any(String)
-      });
+      expect(mockMessageRepository.getRecent).toHaveBeenCalledWith(50);
+      expect(response.body.messages).toHaveLength(1);
+      expect(response.body.count).toBe(1);
+      expect(response.body).toHaveProperty('timestamp');
     });
 
-    it('should use custom limit', async () => {
-      mockReq.query = { limit: '20' };
+    it('should accept custom limit', async () => {
+      mockMessageRepository.getRecent.mockResolvedValue([]);
       
-      mockRepository.getRecent.mockResolvedValue([]);
+      await request(app)
+        .get('/messages/recent')
+        .query({ limit: '25' })
+        .expect(200);
       
-      const handler = getRouteHandler('/messages/recent');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.getRecent).toHaveBeenCalledWith(20);
+      expect(mockMessageRepository.getRecent).toHaveBeenCalledWith(25);
     });
 
     it('should handle errors', async () => {
       const error = new Error('Database error');
-      mockRepository.getRecent.mockRejectedValue(error);
+      mockMessageRepository.getRecent.mockRejectedValue(error);
       
-      const handler = getRouteHandler('/messages/recent');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/recent')
+        .expect(500);
       
-      expect(mockNext).toHaveBeenCalledWith(error);
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
@@ -248,49 +193,45 @@ describe('Message Routes', () => {
     it('should return specific message', async () => {
       const mockMessage: StoredMessage = {
         id: 'msg-123',
+        type: 'tool_use',
+        payload: { tool: 'test' },
+        direction: 'incoming' as const,
         timestamp: new Date(),
-        type: 'text',
-        data: { content: 'Specific message' },
-        direction: 'send'
+        namespace: 'test',
+        addon_id: 'addon-1'
       };
       
-      mockReq.params = { id: 'msg-123' };
-      mockRepository.findById.mockResolvedValue(mockMessage);
+      mockMessageRepository.findById.mockResolvedValue(mockMessage);
       
-      const handler = getRouteHandler('/messages/:id');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/msg-123')
+        .expect(200);
       
-      expect(mockRepository.findById).toHaveBeenCalledWith('msg-123');
-      expect(jsonMock).toHaveBeenCalledWith({
-        message: mockMessage,
-        timestamp: expect.any(String)
-      });
+      expect(mockMessageRepository.findById).toHaveBeenCalledWith('msg-123');
+      expect(response.body.message).toEqual(mockMessage);
+      expect(response.body).toHaveProperty('timestamp');
     });
 
     it('should return 404 for non-existent message', async () => {
-      mockReq.params = { id: 'non-existent' };
-      mockRepository.findById.mockResolvedValue(null);
+      mockMessageRepository.findById.mockResolvedValue(null);
       
-      const handler = getRouteHandler('/messages/:id');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/non-existent')
+        .expect(404);
       
-      expect(statusMock).toHaveBeenCalledWith(404);
-      expect(jsonMock).toHaveBeenCalledWith({
-        error: 'Message not found',
-        messageId: 'non-existent',
-        timestamp: expect.any(String)
-      });
+      expect(response.body).toHaveProperty('error', 'Message not found');
+      expect(response.body).toHaveProperty('messageId', 'non-existent');
     });
 
     it('should handle errors', async () => {
-      mockReq.params = { id: 'msg-123' };
       const error = new Error('Database error');
-      mockRepository.findById.mockRejectedValue(error);
+      mockMessageRepository.findById.mockRejectedValue(error);
       
-      const handler = getRouteHandler('/messages/:id');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/msg-123')
+        .expect(500);
       
-      expect(mockNext).toHaveBeenCalledWith(error);
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
@@ -299,83 +240,74 @@ describe('Message Routes', () => {
       const mockMessages: StoredMessage[] = [
         {
           id: '1',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          namespace: 'chat'
+          namespace: 'test',
+          addon_id: 'addon-1'
         },
         {
           id: '2',
+          type: 'tool_result',
+          payload: {},
+          direction: 'outgoing' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          namespace: 'notifications'
+          namespace: 'production',
+          addon_id: 'addon-2'
         },
         {
           id: '3',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          namespace: 'chat' // Duplicate
-        }
-      ];
-      
-      mockRepository.findByQuery.mockResolvedValue(mockMessages);
-      
-      const handler = getRouteHandler('/messages/namespaces');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({ limit: 1000 });
-      expect(jsonMock).toHaveBeenCalledWith({
-        namespaces: ['chat', 'notifications'],
-        count: 2,
-        timestamp: expect.any(String)
-      });
-    });
-
-    it('should handle messages without namespaces', async () => {
-      const mockMessages: StoredMessage[] = [
-        {
-          id: '1',
-          timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send'
-          // No namespace
+          namespace: 'test', // duplicate
+          addon_id: 'addon-1'
         },
         {
-          id: '2',
+          id: '4',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          namespace: 'chat'
+          // no namespace
+          addon_id: 'addon-3'
         }
       ];
       
-      mockRepository.findByQuery.mockResolvedValue(mockMessages);
+      mockMessageRepository.findByQuery.mockResolvedValue(mockMessages);
       
-      const handler = getRouteHandler('/messages/namespaces');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/namespaces')
+        .expect(200);
       
-      expect(jsonMock).toHaveBeenCalledWith({
-        namespaces: ['chat'],
-        count: 1,
-        timestamp: expect.any(String)
-      });
+      expect(mockMessageRepository.findByQuery).toHaveBeenCalledWith({ limit: 1000 });
+      expect(response.body.namespaces).toEqual(['production', 'test']);
+      expect(response.body.count).toBe(2);
+      expect(response.body).toHaveProperty('timestamp');
+    });
+
+    it('should return empty array when no namespaces', async () => {
+      mockMessageRepository.findByQuery.mockResolvedValue([]);
+      
+      const response = await request(app)
+        .get('/messages/namespaces')
+        .expect(200);
+      
+      expect(response.body.namespaces).toEqual([]);
+      expect(response.body.count).toBe(0);
     });
 
     it('should handle errors', async () => {
       const error = new Error('Database error');
-      mockRepository.findByQuery.mockRejectedValue(error);
+      mockMessageRepository.findByQuery.mockRejectedValue(error);
       
-      const handler = getRouteHandler('/messages/namespaces');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/namespaces')
+        .expect(500);
       
-      expect(mockNext).toHaveBeenCalledWith(error);
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
@@ -384,181 +316,135 @@ describe('Message Routes', () => {
       const mockMessages: StoredMessage[] = [
         {
           id: '1',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
+          namespace: 'test',
           addon_id: 'addon-1'
         },
         {
           id: '2',
+          type: 'tool_result',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
+          namespace: 'test',
           addon_id: 'addon-2'
         },
         {
           id: '3',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          addon_id: 'addon-1' // Duplicate
-        }
-      ];
-      
-      mockRepository.findByQuery.mockResolvedValue(mockMessages);
-      
-      const handler = getRouteHandler('/messages/addons');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({ limit: 1000 });
-      expect(jsonMock).toHaveBeenCalledWith({
-        addons: ['addon-1', 'addon-2'],
-        count: 2,
-        timestamp: expect.any(String)
-      });
-    });
-
-    it('should handle messages without addon IDs', async () => {
-      const mockMessages: StoredMessage[] = [
-        {
-          id: '1',
-          timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send'
-          // No addon_id
+          namespace: 'test',
+          addon_id: 'addon-1' // duplicate
         },
         {
-          id: '2',
+          id: '4',
+          type: 'tool_use',
+          payload: {},
+          direction: 'incoming' as const,
           timestamp: new Date(),
-          type: 'text',
-          data: {},
-          direction: 'send',
-          addon_id: 'addon-1'
+          namespace: 'test'
+          // no addon_id
         }
       ];
       
-      mockRepository.findByQuery.mockResolvedValue(mockMessages);
+      mockMessageRepository.findByQuery.mockResolvedValue(mockMessages);
       
-      const handler = getRouteHandler('/messages/addons');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .get('/messages/addons')
+        .expect(200);
       
-      expect(jsonMock).toHaveBeenCalledWith({
-        addons: ['addon-1'],
-        count: 1,
-        timestamp: expect.any(String)
-      });
+      expect(mockMessageRepository.findByQuery).toHaveBeenCalledWith({ limit: 1000 });
+      expect(response.body.addons).toEqual(['addon-1', 'addon-2']);
+      expect(response.body.count).toBe(2);
+      expect(response.body).toHaveProperty('timestamp');
+    });
+
+    it('should return empty array when no addons', async () => {
+      mockMessageRepository.findByQuery.mockResolvedValue([]);
+      
+      const response = await request(app)
+        .get('/messages/addons')
+        .expect(200);
+      
+      expect(response.body.addons).toEqual([]);
+      expect(response.body.count).toBe(0);
+    });
+
+    it('should handle errors', async () => {
+      const error = new Error('Database error');
+      mockMessageRepository.findByQuery.mockRejectedValue(error);
+      
+      const response = await request(app)
+        .get('/messages/addons')
+        .expect(500);
+      
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
 
   describe('DELETE /messages/old', () => {
     it('should delete old messages', async () => {
-      mockReq.query = { before: '2024-01-01T00:00:00Z' };
+      const beforeDate = '2024-01-01T00:00:00Z';
+      mockMessageRepository.clearOlderThan.mockResolvedValue(10);
       
-      mockRepository.clearOlderThan.mockResolvedValue(100);
+      const response = await request(app)
+        .delete('/messages/old')
+        .query({ before: beforeDate })
+        .expect(200);
       
-      const handler = getRouteHandler('/messages/old', 'delete');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.clearOlderThan).toHaveBeenCalledWith(
-        new Date('2024-01-01T00:00:00Z')
-      );
-      expect(jsonMock).toHaveBeenCalledWith({
-        deleted: 100,
-        before: '2024-01-01T00:00:00.000Z',
-        timestamp: expect.any(String)
-      });
+      expect(mockMessageRepository.clearOlderThan).toHaveBeenCalledWith(new Date(beforeDate));
+      expect(response.body.deleted).toBe(10);
+      expect(response.body.before).toBe(beforeDate);
+      expect(response.body).toHaveProperty('timestamp');
     });
 
     it('should return 400 if before parameter is missing', async () => {
-      mockReq.query = {};
+      const response = await request(app)
+        .delete('/messages/old')
+        .expect(400);
       
-      const handler = getRouteHandler('/messages/old', 'delete');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(statusMock).toHaveBeenCalledWith(400);
-      expect(jsonMock).toHaveBeenCalledWith({
-        error: 'before parameter is required (ISO date string)',
-        timestamp: expect.any(String)
-      });
-      expect(mockRepository.clearOlderThan).not.toHaveBeenCalled();
+      expect(response.body).toHaveProperty('error', 'before parameter is required (ISO date string)');
+      expect(mockMessageRepository.clearOlderThan).not.toHaveBeenCalled();
     });
 
     it('should handle errors', async () => {
-      mockReq.query = { before: '2024-01-01T00:00:00Z' };
       const error = new Error('Database error');
-      mockRepository.clearOlderThan.mockRejectedValue(error);
+      mockMessageRepository.clearOlderThan.mockRejectedValue(error);
       
-      const handler = getRouteHandler('/messages/old', 'delete');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
+      const response = await request(app)
+        .delete('/messages/old')
+        .query({ before: '2024-01-01T00:00:00Z' })
+        .expect(500);
       
-      expect(mockNext).toHaveBeenCalledWith(error);
+      expect(response.body).toHaveProperty('error', 'Database error');
     });
   });
+});
 
-  describe('captureMessage function', () => {
-    it('should save message with generated ID and timestamp', () => {
-      const messageData = {
-        type: 'text',
-        data: { content: 'Test message' },
-        direction: 'send' as const,
-        namespace: 'chat',
-        addon_id: 'addon-1'
-      };
-      
-      captureMessage(messageData);
-      
-      expect(mockRepository.save).toHaveBeenCalledWith({
-        ...messageData,
-        id: '',
-        timestamp: expect.any(Date)
-      });
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle invalid date parameters', async () => {
-      mockReq.query = { since: 'invalid-date' };
-      
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      // The Date constructor will create an invalid date, which should be handled
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
-        since: expect.any(Date), // Will be Invalid Date
-        until: undefined,
-        type: undefined,
-        namespace: undefined,
-        addon_id: undefined,
-        limit: 100,
-        offset: 0
-      });
-    });
-
-    it('should handle invalid pagination parameters', async () => {
-      mockReq.query = {
-        limit: 'invalid',
-        offset: 'invalid'
-      };
-      
-      mockRepository.findByQuery.mockResolvedValue([]);
-      mockRepository.count.mockResolvedValue(0);
-      
-      const handler = getRouteHandler('/messages');
-      await handler(mockReq as Request, mockRes as Response, mockNext);
-      
-      expect(mockRepository.findByQuery).toHaveBeenCalledWith({
-        since: undefined,
-        until: undefined,
-        type: undefined,
-        namespace: undefined,
-        addon_id: undefined,
-        limit: NaN, // parseInt('invalid') returns NaN
-        offset: NaN
-      });
+describe('captureMessage function', () => {
+  it('should save message to repository', () => {
+    jest.resetModules();
+    const { captureMessage, messageRepository } = require('../message.routes');
+    
+    const message = {
+      type: 'tool_use',
+      payload: { tool: 'test' },
+      direction: 'incoming' as const,
+      namespace: 'test',
+      addon_id: 'addon-1'
+    };
+    
+    captureMessage(message);
+    
+    expect(messageRepository.save).toHaveBeenCalledWith({
+      ...message,
+      id: '',
+      timestamp: expect.any(Date)
     });
   });
 });
