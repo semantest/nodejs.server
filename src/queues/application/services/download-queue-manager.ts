@@ -12,6 +12,7 @@ export interface QueueConfig {
   retryDelays: number[]; // delays in ms for each retry attempt
   dlqThreshold: number; // max attempts before DLQ
   processingTimeout: number; // timeout for processing in ms
+  maxQueueSize?: number; // maximum total items allowed in queue (optional)
 }
 
 export class DownloadQueueManager extends EventEmitter {
@@ -68,9 +69,43 @@ export class DownloadQueueManager extends EventEmitter {
   }
 
   /**
+   * Get current total queue size including processing items
+   */
+  private getTotalQueueSize(): number {
+    return this.queues.high.length + 
+           this.queues.normal.length + 
+           this.queues.low.length + 
+           this.processing.size;
+  }
+
+  /**
+   * Check if queue has capacity for new items
+   */
+  private checkQueueCapacity(): void {
+    if (!this.config.maxQueueSize) return;
+
+    const currentSize = this.getTotalQueueSize();
+    
+    if (currentSize >= this.config.maxQueueSize) {
+      throw new Error(`Queue is at capacity (${this.config.maxQueueSize} items). Cannot accept new items.`);
+    }
+    
+    // Emit event when reaching capacity
+    if (currentSize + 1 === this.config.maxQueueSize) {
+      this.emit('queue:capacity:reached', {
+        currentSize: currentSize + 1,
+        maxSize: this.config.maxQueueSize
+      });
+    }
+  }
+
+  /**
    * Enqueue a new download request
    */
   async enqueue(payload: QueueItemPayload, priority: QueuePriority = 'normal'): Promise<QueueItem> {
+    // Check queue capacity if configured
+    this.checkQueueCapacity();
+
     const item: QueueItem = {
       id: uuidv4(),
       priority,
