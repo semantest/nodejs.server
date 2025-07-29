@@ -56,6 +56,7 @@ healthRouter.get('/health/detailed', async (req: Request, res: Response) => {
   checks.server = {
     status: 'pass',
     message: 'Server is running',
+    responseTime: Date.now() - startTime,
     details: {
       nodeVersion: process.version,
       platform: process.platform,
