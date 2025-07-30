@@ -3,6 +3,28 @@
  * Testing comprehensive logging infrastructure with correlation tracking
  */
 
+// Mock the actual module to prevent instantiation of the default logger
+jest.mock('../structured-logger', () => {
+  const actualModule = jest.requireActual('../structured-logger');
+  const mockLogger = {
+    error: jest.fn(),
+    warn: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn(),
+    http: jest.fn(),
+    security: jest.fn(),
+    performance: jest.fn(),
+    business: jest.fn(),
+    audit: jest.fn(),
+    auth: jest.fn(),
+    child: jest.fn()
+  };
+  return {
+    ...actualModule,
+    logger: mockLogger
+  };
+});
+
 import { 
   StructuredLogger, 
   logger,
@@ -495,6 +517,12 @@ describe('Express Middleware', () => {
   describe('errorLoggingMiddleware', () => {
     it('should log error and pass to next handler', () => {
       const error = new Error('Test error');
+      
+      // Add get method to mockReq
+      mockReq.get = jest.fn((header: string) => {
+        if (header === 'User-Agent') return 'test-agent';
+        return undefined;
+      });
       
       errorLoggingMiddleware(error, mockReq as Request, mockRes as Response, mockNext);
 
