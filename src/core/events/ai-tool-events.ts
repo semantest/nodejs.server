@@ -49,10 +49,10 @@ export class AIToolActivationFailedEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly error: AIToolError,
     public readonly attemptNumber: number,
-    public readonly willRetry: boolean
+    public readonly willRetry: boolean,
+    public readonly queueItemId?: string
   ) {
     super();
   }
@@ -67,9 +67,9 @@ export class AIToolExecutionStartedEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly input: any,
-    public readonly executionId: string
+    public readonly executionId: string,
+    public readonly queueItemId?: string
   ) {
     super();
   }
@@ -84,10 +84,10 @@ export class AIToolExecutionCompletedEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly executionId: string,
     public readonly result: any,
-    public readonly executionTime: number
+    public readonly executionTime: number,
+    public readonly queueItemId?: string
   ) {
     super();
   }
@@ -102,9 +102,9 @@ export class AIToolExecutionFailedEvent extends Event {
   constructor(
     public readonly toolId: string,
     public readonly addonId: string,
-    public readonly queueItemId?: string,
     public readonly executionId: string,
     public readonly error: AIToolError,
+    public readonly queueItemId?: string,
     public readonly partialResult?: any
   ) {
     super();

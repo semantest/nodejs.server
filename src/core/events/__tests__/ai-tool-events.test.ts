@@ -61,7 +61,7 @@ describe('AI Tool Events', () => {
       ];
 
       methods.forEach(method => {
-        const event = new AIToolActivatingEvent('tool', 'addon', undefined, method);
+        const event = new AIToolActivatingEvent('tool', 'addon', method);
         expect(event.activationMethod).toBe(method);
       });
     });
@@ -72,9 +72,9 @@ describe('AI Tool Events', () => {
       const event = new AIToolActivatedEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         1500,
-        ['signal1', 'signal2']
+        ['signal1', 'signal2'],
+        'queue-789'
       );
 
       expect(event).toBeInstanceOf(Event);
@@ -97,10 +97,10 @@ describe('AI Tool Events', () => {
       const event = new AIToolActivationFailedEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         error,
         1,
-        true
+        true,
+        'queue-789'
       );
 
       expect(event).toBeInstanceOf(Event);
@@ -121,7 +121,6 @@ describe('AI Tool Events', () => {
       const event = new AIToolActivationFailedEvent(
         'tool-123',
         'addon-456',
-        undefined,
         error,
         3,
         false
@@ -139,9 +138,9 @@ describe('AI Tool Events', () => {
       const event = new AIToolExecutionStartedEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         input,
-        'exec-001'
+        'exec-001',
+        'queue-789'
       );
 
       expect(event).toBeInstanceOf(Event);
@@ -158,10 +157,10 @@ describe('AI Tool Events', () => {
       const event = new AIToolExecutionCompletedEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         'exec-001',
         result,
-        2500
+        2500,
+        'queue-789'
       );
 
       expect(event).toBeInstanceOf(Event);
@@ -185,9 +184,9 @@ describe('AI Tool Events', () => {
       const event = new AIToolExecutionFailedEvent(
         'tool-123',
         'addon-456',
-        'queue-789',
         'exec-001',
         error,
+        'queue-789',
         partialResult
       );
 
@@ -208,7 +207,6 @@ describe('AI Tool Events', () => {
       const event = new AIToolExecutionFailedEvent(
         'tool-123',
         'addon-456',
-        undefined,
         'exec-002',
         error
       );

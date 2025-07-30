@@ -10,9 +10,7 @@ import {
   LogCategory,
   requestLoggingMiddleware,
   websocketLoggingMiddleware,
-  errorLoggingMiddleware,
-  runWithCorrelationId,
-  getCorrelationId
+  errorLoggingMiddleware
 } from '../structured-logger';
 import { Request, Response, NextFunction } from 'express';
 import { performance } from 'perf_hooks';
@@ -163,7 +161,7 @@ describe('StructuredLogger', () => {
     });
 
     it('should log warning message', () => {
-      structuredLogger.warn('Test warning', { threshold: 80 });
+      structuredLogger.warn('Test warning', { metadata: { threshold: 80 } });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
         level: LogLevel.WARN,
@@ -183,7 +181,7 @@ describe('StructuredLogger', () => {
     });
 
     it('should log debug message', () => {
-      structuredLogger.debug('Debug info', { details: 'test' });
+      structuredLogger.debug('Debug info', { metadata: { details: 'test' } });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
         level: LogLevel.DEBUG,
@@ -203,7 +201,7 @@ describe('StructuredLogger', () => {
     });
 
     it('should log http message', () => {
-      structuredLogger.http('HTTP request', { method: 'GET', path: '/api/test' });
+      structuredLogger.http('HTTP request', { metadata: { method: 'GET', path: '/api/test' } });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
         level: LogLevel.HTTP,
@@ -251,8 +249,8 @@ describe('StructuredLogger', () => {
   describe('Performance Logging', () => {
     it('should log performance metrics', () => {
       structuredLogger.performance('API call completed', {
-        duration: 150,
-        endpoint: '/api/users'
+        performance: { duration: 150 },
+        metadata: { endpoint: '/api/users' }
       });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
@@ -310,9 +308,8 @@ describe('StructuredLogger', () => {
     it('should log security event', () => {
       structuredLogger.security('Failed login attempt', {
         userId: 'user123',
-        ipAddress: '192.168.1.1',
-        threat: 'brute_force',
-        severity: 'high'
+        security: { ipAddress: '192.168.1.1' },
+        metadata: { threat: 'brute_force', severity: 'high' }
       });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
@@ -342,9 +339,7 @@ describe('StructuredLogger', () => {
     it('should log business event', () => {
       structuredLogger.business('Order placed', {
         userId: 'user123',
-        orderId: 'order456',
-        amount: 99.99,
-        currency: 'USD'
+        metadata: { orderId: 'order456', amount: 99.99, currency: 'USD' }
       });
 
       expect(mockLogger.log).toHaveBeenCalledWith({
