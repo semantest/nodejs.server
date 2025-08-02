@@ -15,6 +15,7 @@ import { healthRouter } from './health/infrastructure/http/health.routes';
 import { monitoringRouter } from './monitoring/infrastructure/http/monitoring.routes';
 import { addonRouter } from './addons/infrastructure/http/addon.routes';
 import { dynamicAddonRouter } from './addons/infrastructure/http/addon-dynamic.routes';
+import { chatRouter } from './chat/infrastructure/http/chat.routes';
 import { securityHeaders, rateLimiters } from './security/infrastructure/middleware/security.middleware';
 
 const PORT = process.env.PORT || 3003;
@@ -92,6 +93,7 @@ async function startServer() {
   app.use('/api', monitoringRouter);
   app.use('/api', addonRouter);
   app.use('/api', dynamicAddonRouter); // New dynamic addon endpoints
+  app.use('/api', chatRouter); // New chat endpoints
   app.use('/', healthRouter);
   
   console.log('📍 Routes mounted:');
@@ -101,6 +103,7 @@ async function startServer() {
   console.log('   - Monitoring routes at /api');
   console.log('   - Addon routes at /api');
   console.log('   - Dynamic addon routes at /api');
+  console.log('   - Chat routes at /api');
   console.log('   - Health routes at /');
 
   // Seed test data in development mode
