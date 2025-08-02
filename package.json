@@ -5,7 +5,8 @@
   "main": "dist/start-server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/start-server.ts",
+    "dev": "ts-node --transpile-only src/start-server.ts",
+    "dev:watch": "nodemon --exec 'node -r ts-node/register' src/start-server.ts",
     "start": "npm run build && node dist/start-server.js",
     "test": "jest",
     "test:watch": "jest --watch"

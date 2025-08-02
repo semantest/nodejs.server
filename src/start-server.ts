@@ -36,7 +36,14 @@ async function startServer() {
 
   // CORS configuration
   app.use(cors({
-    origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+    origin: (origin, callback) => {
+      // Allow requests from chrome extensions and localhost
+      if (!origin || origin.startsWith('chrome-extension://') || origin.includes('localhost')) {
+        callback(null, true);
+      } else {
+        callback(null, process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000']);
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-User-Id']
@@ -163,6 +170,17 @@ async function startServer() {
     console.log('\n💡 Test data has been seeded. Server ready for requests!');
   });
 }
+
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+  console.log('📴 SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('📴 SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
 
 // Start the server
 startServer().catch(error => {

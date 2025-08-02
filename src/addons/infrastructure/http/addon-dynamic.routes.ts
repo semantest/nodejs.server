@@ -116,7 +116,7 @@ dynamicAddonRouter.get('/addons/:addonId/bundle', async (req: Request, res: Resp
           ''
         );
       } catch (error) {
-        logger.warn(`Failed to bundle script ${scriptFile}`, error as Error);
+        logger.warn(`Failed to bundle script ${scriptFile}`, { error: error as Error });
       }
     }
     

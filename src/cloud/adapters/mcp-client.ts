@@ -55,7 +55,9 @@ export interface MCPContext {
   expiresAt: Date;
   confidence: number;
   capabilities: string[];
-  
+}
+
+export class MCPContextHelper {
   static fromJSON(data: any): MCPContext {
     return {
       id: data.id,
@@ -142,7 +144,7 @@ export class MCPClient {
         optimizationGoals: request.optimizationGoals || []
       });
 
-      return MCPContext.fromJSON(response.data);
+      return MCPContextHelper.fromJSON(response.data);
     } catch (error) {
       this.handleError('createContext', error);
       throw error;
