@@ -170,6 +170,13 @@ async function startServer() {
     console.log(`   GET    /api/metrics/queue`);
     console.log(`   GET    /api/metrics/system`);
     
+    console.log('\n💬 Chat Sessions:');
+    console.log(`   POST   /api/chat/sessions             - Create new chat with optional initial prompt`);
+    console.log(`   GET    /api/chat/sessions/:id          - Get chat session with messages`);
+    console.log(`   POST   /api/chat/sessions/:id/messages - Send message to chat`);
+    console.log(`   GET    /api/chat/users/:userId/sessions - Get all user sessions`);
+    console.log(`   DELETE /api/chat/sessions/:id          - Close chat session`);
+    
     console.log('\n💡 Test data has been seeded. Server ready for requests!');
   });
 }
