@@ -1,0 +1,391 @@
+# Kubernetes Production Deployment for Semantest API
+# Supports horizontal scaling and zero-downtime deployments
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: semantest-prod
+---
+# ConfigMap for environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: semantest-config
+  namespace: semantest-prod
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  WS_PORT: "8080"
+  LOG_LEVEL: "info"
+  WORKER_CONCURRENCY: "10"
+  CORS_ORIGINS: "https://semantest.com,https://app.semantest.com"
+---
+# Secret for sensitive data (base64 encoded in production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: semantest-secrets
+  namespace: semantest-prod
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://user:pass@postgres:5432/semantest"
+  REDIS_PASSWORD: "your-redis-password"
+  JWT_SECRET: "your-jwt-secret"
+  OPENAI_API_KEY: "your-openai-key"
+  STABILITY_API_KEY: "your-stability-key"
+  MIDJOURNEY_API_KEY: "your-midjourney-key"
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: semantest-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command:
+          - redis-server
+          - --requirepass
+          - $(REDIS_PASSWORD)
+          - --appendonly
+          - "yes"
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: semantest-secrets
+              key: REDIS_PASSWORD
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: semantest-prod
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semantest-api
+  namespace: semantest-prod
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: semantest-api
+  template:
+    metadata:
+      labels:
+        app: semantest-api
+    spec:
+      containers:
+      - name: api
+        image: semantest/api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: semantest-config
+        - secretRef:
+            name: semantest-secrets
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: semantest-api
+  namespace: semantest-prod
+spec:
+  selector:
+    app: semantest-api
+  ports:
+  - port: 3000
+    targetPort: 3000
+---
+# WebSocket Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semantest-websocket
+  namespace: semantest-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: semantest-websocket
+  template:
+    metadata:
+      labels:
+        app: semantest-websocket
+    spec:
+      containers:
+      - name: websocket
+        image: semantest/websocket:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: semantest-config
+        - secretRef:
+            name: semantest-secrets
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+# WebSocket Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: semantest-websocket
+  namespace: semantest-prod
+spec:
+  selector:
+    app: semantest-websocket
+  ports:
+  - port: 8080
+    targetPort: 8080
+  sessionAffinity: ClientIP
+---
+# Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: semantest-worker
+  namespace: semantest-prod
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: semantest-worker
+  template:
+    metadata:
+      labels:
+        app: semantest-worker
+    spec:
+      containers:
+      - name: worker
+        image: semantest/worker:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: semantest-config
+        - secretRef:
+            name: semantest-secrets
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: WORKER_CONCURRENCY
+          value: "5"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+---
+# Ingress Controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: semantest-ingress
+  namespace: semantest-prod
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "10"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  tls:
+  - hosts:
+    - api.semantest.com
+    secretName: semantest-tls
+  rules:
+  - host: api.semantest.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: semantest-api
+            port:
+              number: 3000
+      - path: /socket.io
+        pathType: Prefix
+        backend:
+          service:
+            name: semantest-websocket
+            port:
+              number: 8080
+---
+# Horizontal Pod Autoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: semantest-api-hpa
+  namespace: semantest-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: semantest-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# Horizontal Pod Autoscaler for Workers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: semantest-worker-hpa
+  namespace: semantest-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: semantest-worker
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# PersistentVolumeClaim for Redis
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: semantest-prod
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: semantest-network-policy
+  namespace: semantest-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: semantest-prod
+    - podSelector: {}
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: semantest-prod
+    - podSelector: {}
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
