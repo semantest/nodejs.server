@@ -1,0 +1,1 @@
+{"version":3,"file":"performance-metrics.js","sourceRoot":"","sources":["../../../../src/monitoring/infrastructure/__mocks__/performance-metrics.ts"],"names":[],"mappings":";AAAA;;GAEG;;;AAEU,QAAA,kBAAkB,GAAG;IAChC,gBAAgB,EAAE,IAAI,CAAC,EAAE,EAAE;IAC3B,kBAAkB,EAAE,IAAI,CAAC,EAAE,EAAE;IAC7B,aAAa,EAAE,IAAI,CAAC,EAAE,EAAE;IACxB,uBAAuB,EAAE,IAAI,CAAC,EAAE,EAAE;CACnC,CAAC"}
