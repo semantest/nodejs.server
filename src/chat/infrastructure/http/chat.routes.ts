@@ -9,9 +9,13 @@ import { ChatService } from '../../application/services/chat.service';
 import { NewChatRequestedEvent } from '../../../core/events/chat-events';
 import { logger } from '../../../monitoring/infrastructure/structured-logger';
 import { v4 as uuidv4 } from 'uuid';
+import { imageGenerationRouter } from './image-generation.routes';
 
 export const chatRouter = Router();
 const chatService = new ChatService();
+
+// Mount image generation routes
+chatRouter.use('/images', imageGenerationRouter);
 
 // In a real implementation, this would be injected
 const eventBus = {
