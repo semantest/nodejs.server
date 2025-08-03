@@ -1,0 +1,8 @@
+{
+  "userId": "test-user-123",
+  "initialPrompt": "Hello! I need help with implementing a new feature.",
+  "metadata": {
+    "title": "Feature Implementation Help",
+    "tags": ["development", "feature-request"]
+  }
+}
