@@ -1,0 +1,210 @@
+version: '3.8'
+
+services:
+  # API Server - Blue/Green deployment ready
+  api-blue:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: semantest-api-blue
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=redis-cluster
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STABILITY_API_KEY=${STABILITY_API_KEY}
+      - MIDJOURNEY_API_KEY=${MIDJOURNEY_API_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_REGION=${S3_REGION}
+      - CDN_URL=${CDN_URL}
+      - WORKER_CONCURRENCY=10
+      - LOG_LEVEL=info
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis-cluster
+      - postgres
+    networks:
+      - semantest-network
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  api-green:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    container_name: semantest-api-green
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=redis-cluster
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STABILITY_API_KEY=${STABILITY_API_KEY}
+      - MIDJOURNEY_API_KEY=${MIDJOURNEY_API_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_REGION=${S3_REGION}
+      - CDN_URL=${CDN_URL}
+      - WORKER_CONCURRENCY=10
+      - LOG_LEVEL=info
+    ports:
+      - "3001:3001"
+    depends_on:
+      - redis-cluster
+      - postgres
+    networks:
+      - semantest-network
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  # WebSocket Server with Load Balancing
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile.websocket
+    environment:
+      - NODE_ENV=production
+      - WS_PORT=8080
+      - REDIS_HOST=redis-cluster
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis-cluster
+    networks:
+      - semantest-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  # Job Workers for Image Generation
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis-cluster
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STABILITY_API_KEY=${STABILITY_API_KEY}
+      - MIDJOURNEY_API_KEY=${MIDJOURNEY_API_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_REGION=${S3_REGION}
+      - WORKER_CONCURRENCY=5
+    depends_on:
+      - redis-cluster
+    networks:
+      - semantest-network
+    deploy:
+      replicas: 4
+      restart_policy:
+        condition: on-failure
+
+  # Redis Cluster for BullMQ
+  redis-cluster:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - semantest-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=semantest
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - semantest-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api-blue
+      - api-green
+      - websocket
+    networks:
+      - semantest-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  # Redis Commander for monitoring
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=cluster:redis-cluster:6379:0:${REDIS_PASSWORD}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis-cluster
+    networks:
+      - semantest-network
+
+  # Bull Dashboard for job monitoring
+  bull-dashboard:
+    image: deadly0/bull-board
+    environment:
+      - REDIS_HOST=redis-cluster
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    ports:
+      - "3002:3000"
+    depends_on:
+      - redis-cluster
+    networks:
+      - semantest-network
+
+volumes:
+  redis-data:
+  postgres-data:
+
+networks:
+  semantest-network:
+    driver: bridge
