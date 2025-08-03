@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # K6 Load Test Runner
+  k6:
+    build: .
+    environment:
+      - BASE_URL=${BASE_URL:-https://api.semantest.com/api/v1}
+      - METAPHYSICAL_API_KEY=${METAPHYSICAL_API_KEY}
+      - WEBHOOK_URL=${WEBHOOK_URL:-https://webhook.site/test}
+    volumes:
+      - ./results:/results
+      - .:/scripts:ro
+    command: >
+      run
+      --out json=/results/metaphysical-load-test-results.json
+      --out influxdb=http://influxdb:8086/k6
+      metaphysical-load-test.js
+    depends_on:
+      - influxdb
+      - grafana
+    networks:
+      - k6-network
+
+  # InfluxDB for storing metrics
+  influxdb:
+    image: influxdb:1.8
+    environment:
+      - INFLUXDB_DB=k6
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    networks:
+      - k6-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_BASIC_ENABLED=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - influxdb
+    networks:
+      - k6-network
+
+volumes:
+  influxdb-data:
+
+networks:
+  k6-network:
+    driver: bridge
