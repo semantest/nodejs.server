@@ -1,0 +1,711 @@
+openapi: 3.0.3
+info:
+  title: Semantest Image Generation API
+  description: |
+    RESTful API for AI-powered image generation with async job queue support.
+    Supports multiple providers including DALL-E, Stable Diffusion, and Midjourney.
+  version: 1.0.0
+  contact:
+    name: Semantest Team
+    email: api@semantest.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.semantest.com/v1
+    description: Production server
+  - url: https://staging-api.semantest.com/v1
+    description: Staging server
+  - url: http://localhost:3000/api/v1
+    description: Local development
+
+tags:
+  - name: Chat
+    description: Chat session management with image generation
+  - name: Images
+    description: Direct image generation endpoints
+  - name: Jobs
+    description: Job status and management
+  - name: Health
+    description: System health monitoring
+
+paths:
+  /chat/new:
+    post:
+      tags:
+        - Chat
+      summary: Create new chat session with optional image generation
+      description: |
+        Primary endpoint for creating a new chat session. Optionally triggers
+        asynchronous image generation based on the chat prompt.
+      operationId: createNewChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewChatRequest'
+            examples:
+              withImageGeneration:
+                summary: Chat with image generation
+                value:
+                  userId: "550e8400-e29b-41d4-a716-446655440000"
+                  prompt: "A serene Japanese garden with cherry blossoms"
+                  imageGeneration:
+                    enabled: true
+                    provider: "dalle3"
+                    size: "1024x1024"
+                    quality: "hd"
+              chatOnly:
+                summary: Chat without images
+                value:
+                  userId: "550e8400-e29b-41d4-a716-446655440000"
+                  prompt: "Tell me about Japanese gardens"
+      responses:
+        '201':
+          description: Chat session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewChatResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /images/generate:
+    post:
+      tags:
+        - Images
+      summary: Generate images asynchronously
+      description: Submit a single image generation job to the queue
+      operationId: generateImage
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageGenerationRequest'
+      responses:
+        '202':
+          description: Job accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /images/batch:
+    post:
+      tags:
+        - Images
+      summary: Batch image generation
+      description: Submit multiple image generation jobs in a single request
+      operationId: generateBatchImages
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchImageGenerationRequest'
+      responses:
+        '202':
+          description: Batch accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /images/status/{jobId}:
+    get:
+      tags:
+        - Jobs
+      summary: Get job status
+      description: Check the status of an image generation job
+      operationId: getJobStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /images/cancel/{jobId}:
+    delete:
+      tags:
+        - Jobs
+      summary: Cancel a job
+      description: Cancel a pending or queued job
+      operationId: cancelJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Job cancelled successfully
+        '400':
+          description: Job cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Get system health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: System is healthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    NewChatRequest:
+      type: object
+      required:
+        - userId
+        - prompt
+      properties:
+        userId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+          description: Optional session ID to continue existing session
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        imageGeneration:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            provider:
+              $ref: '#/components/schemas/ImageProvider'
+            size:
+              $ref: '#/components/schemas/ImageSize'
+            count:
+              type: integer
+              minimum: 1
+              maximum: 4
+              default: 1
+            quality:
+              type: string
+              enum: [standard, hd]
+              default: standard
+            style:
+              type: string
+              enum: [vivid, natural]
+            webhookUrl:
+              type: string
+              format: uri
+            webhookEvents:
+              type: array
+              items:
+                $ref: '#/components/schemas/WebhookEvent'
+            metadata:
+              type: object
+              additionalProperties: true
+        chatContext:
+          type: object
+          properties:
+            previousMessages:
+              type: array
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [user, assistant, system]
+                  content:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+            temperature:
+              type: number
+              minimum: 0
+              maximum: 2
+              default: 0.7
+            maxTokens:
+              type: integer
+              minimum: 1
+              maximum: 4000
+
+    ImageGenerationRequest:
+      type: object
+      required:
+        - userId
+        - prompt
+      properties:
+        userId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        provider:
+          $ref: '#/components/schemas/ImageProvider'
+        size:
+          $ref: '#/components/schemas/ImageSize'
+        count:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 1
+        quality:
+          type: string
+          enum: [standard, hd]
+          default: standard
+        style:
+          type: string
+          enum: [vivid, natural]
+        priority:
+          type: string
+          enum: [low, normal, high]
+          default: normal
+        webhookUrl:
+          type: string
+          format: uri
+        webhookEvents:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+        metadata:
+          type: object
+
+    BatchImageGenerationRequest:
+      type: object
+      required:
+        - userId
+        - jobs
+      properties:
+        userId:
+          type: string
+          format: uuid
+        apiKey:
+          type: string
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required:
+              - prompt
+            properties:
+              prompt:
+                type: string
+                minLength: 1
+                maxLength: 4000
+              provider:
+                $ref: '#/components/schemas/ImageProvider'
+              size:
+                $ref: '#/components/schemas/ImageSize'
+              count:
+                type: integer
+                minimum: 1
+                maximum: 4
+              quality:
+                type: string
+                enum: [standard, hd]
+              style:
+                type: string
+                enum: [vivid, natural]
+              priority:
+                type: string
+                enum: [low, normal, high]
+              metadata:
+                type: object
+        webhookUrl:
+          type: string
+          format: uri
+        webhookEvents:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+
+    NewChatResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        chatResponse:
+          type: object
+          properties:
+            content:
+              type: string
+            role:
+              type: string
+              enum: [assistant]
+            timestamp:
+              type: string
+              format: date-time
+        imageGenerationJob:
+          $ref: '#/components/schemas/JobResponse'
+
+    JobResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        createdAt:
+          type: string
+          format: date-time
+        estimatedCompletionTime:
+          type: string
+          format: date-time
+        priority:
+          type: string
+          enum: [low, normal, high]
+        statusUrl:
+          type: string
+        cancelUrl:
+          type: string
+
+    BatchJobResponse:
+      type: object
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobResponse'
+        totalJobs:
+          type: integer
+        statusUrl:
+          type: string
+
+    JobStatusResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        estimatedCompletionTime:
+          type: string
+          format: date-time
+        result:
+          $ref: '#/components/schemas/ImageGenerationResult'
+        error:
+          $ref: '#/components/schemas/ErrorDetails'
+        metadata:
+          type: object
+
+    ImageGenerationResult:
+      type: object
+      properties:
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeneratedImage'
+        provider:
+          $ref: '#/components/schemas/ImageProvider'
+        totalCost:
+          type: number
+        processingTime:
+          type: integer
+        contentWarnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentWarning'
+
+    GeneratedImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        thumbnailUrl:
+          type: string
+          format: uri
+        size:
+          $ref: '#/components/schemas/ImageSize'
+        format:
+          type: string
+          enum: [png, jpeg, webp]
+        width:
+          type: integer
+        height:
+          type: integer
+        sizeBytes:
+          type: integer
+        hash:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          properties:
+            revisedPrompt:
+              type: string
+            seed:
+              type: integer
+            model:
+              type: string
+
+    ContentWarning:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [violence, adult, medical, racy, spoof]
+        severity:
+          type: string
+          enum: [low, medium, high]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    ErrorDetails:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        retryable:
+          type: boolean
+        retryAfter:
+          type: string
+          format: date-time
+
+    HealthCheckResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          properties:
+            database:
+              $ref: '#/components/schemas/ServiceHealth'
+            redis:
+              $ref: '#/components/schemas/ServiceHealth'
+            queue:
+              $ref: '#/components/schemas/ServiceHealth'
+            imageProviders:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ServiceHealth'
+
+    ServiceHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [up, down, degraded]
+        latency:
+          type: integer
+        error:
+          type: string
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            traceId:
+              type: string
+              format: uuid
+            timestamp:
+              type: string
+              format: date-time
+
+    ImageProvider:
+      type: string
+      enum:
+        - dalle3
+        - dalle2
+        - stable_diffusion
+        - midjourney
+        - automatic
+      default: automatic
+
+    ImageSize:
+      type: string
+      enum:
+        - 256x256
+        - 512x512
+        - 1024x1024
+        - 1792x1024
+        - 1024x576
+        - 576x1024
+      default: 512x512
+
+    JobStatus:
+      type: string
+      enum:
+        - pending
+        - queued
+        - processing
+        - completed
+        - failed
+        - cancelled
+
+    WebhookEvent:
+      type: string
+      enum:
+        - job.queued
+        - job.started
+        - job.progress
+        - job.completed
+        - job.failed
+        - job.cancelled
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: string
+            format: date-time
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
