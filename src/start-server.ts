@@ -17,8 +17,10 @@ import { addonRouter } from './addons/infrastructure/http/addon.routes';
 import { dynamicAddonRouter } from './addons/infrastructure/http/addon-dynamic.routes';
 import { chatRouter } from './chat/infrastructure/http/chat.routes';
 import { securityHeaders, rateLimiters } from './security/infrastructure/middleware/security.middleware';
+import { SemantestWebSocketServer } from './websocket/server';
 
 const PORT = process.env.PORT || 3003;
+const WS_PORT = process.env.WS_PORT || 3004;
 
 async function startServer() {
   const app: Express = express();
@@ -131,10 +133,14 @@ async function startServer() {
     });
   });
 
-  // Start server
+  // Start HTTP server
   app.listen(PORT, () => {
     console.log('✅ Semantest Node.js Server started');
     console.log(`📡 HTTP API available at http://localhost:${PORT}`);
+    
+    // Start WebSocket server
+    const wsServer = new SemantestWebSocketServer(Number(WS_PORT));
+    console.log(`🔌 WebSocket server running on ws://localhost:${WS_PORT}`);
     console.log(`🔌 Health checks:`);
     console.log(`   - Basic: http://localhost:${PORT}/health`);
     console.log(`   - Detailed: http://localhost:${PORT}/health/detailed`);
