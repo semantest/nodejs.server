@@ -10,6 +10,7 @@
 ## 🏗️ Overview
 
 The Semantest Node.js Server provides **infrastructure orchestration** for domain modules using Domain-Driven Design (DDD) principles. It serves as the coordination layer between domain modules, handling cross-domain communication, security, and infrastructure concerns.
+SEMANTEST Node.js Server provides a robust, event-driven coordination layer for browser automation. Built on TypeScript-EDA patterns, it enables seamless communication between CLI clients and browser extensions through WebSocket connections and REST APIs.
 
 ## 🎯 Architecture Role
 
@@ -51,7 +52,7 @@ This server operates at the **Infrastructure Layer** of the DDD architecture:
 ### Installation
 
 ```bash
-npm install @web-buddy/nodejs-server
+npm install @semantest/nodejs-server
 # or with pnpm  
 pnpm add @web-buddy/nodejs-server
 ```
