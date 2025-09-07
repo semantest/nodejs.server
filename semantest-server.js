@@ -49,8 +49,8 @@ const httpServer = http.createServer((req, res) => {
   }
 });
 
-// WebSocket Server on port 8082 (8081 is taken by Docker)
-const wss = new WebSocket.Server({ port: 8082 });
+// WebSocket Server on port 8081 - URGENT CEO PRIORITY
+const wss = new WebSocket.Server({ port: 8081 });
 const extensionConnections = new Set();
 
 wss.on('connection', (ws) => {
@@ -153,7 +153,7 @@ httpServer.listen(8080, () => {
   console.log('🌐 HTTP Server listening on port 8080');
 });
 
-console.log('🔌 WebSocket Server listening on port 8082');
+console.log('🔌 WebSocket Server listening on port 8081');
 console.log('');
 console.log('📋 CEO PRIORITY STATUS:');
 console.log('  ✅ WebSocket ready for Fran');
