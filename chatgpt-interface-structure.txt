@@ -1,0 +1,126 @@
+ChatGPT Interface Structure Analysis
+=====================================
+
+Based on common patterns in ChatGPT's interface (as of 2024):
+
+DOM HIERARCHY:
+==============
+
+html
+└── body
+    └── div#__next
+        └── div.relative (app container)
+            ├── nav (sidebar - optional)
+            └── main.relative (main content area)
+                ├── div.flex-1 (chat container)
+                │   └── div.h-full (conversation wrapper)
+                │       ├── div (conversation thread)
+                │       │   └── div[data-testid="conversation-turn-*"]
+                │       │       ├── div[data-message-author-role="user"]
+                │       │       └── div[data-message-author-role="assistant"]
+                │       └── div.sticky (input area - bottom)
+                │           └── form
+                │               ├── div.relative
+                │               │   └── div[contenteditable="true"] (INPUT)
+                │               └── button[type="submit"] (SEND BUTTON)
+                └── div (status/loading indicators)
+
+KEY ELEMENTS FOR AUTOMATION:
+============================
+
+1. MAIN INPUT TEXTAREA:
+   - Element: div[contenteditable="true"]
+   - Location: Bottom of interface, in sticky container
+   - Attributes: contenteditable="true", often has data-id
+   - Size: Full width, auto-height (grows with content)
+   - Placeholder: Usually shows "Message ChatGPT"
+
+2. SEND BUTTON:
+   - Element: button[type="submit"] or button[aria-label*="Send"]
+   - Location: Right of input area
+   - Attributes: May be disabled when input is empty
+   - Icon: Usually contains SVG send icon
+   - States: Enabled (white/colored), Disabled (grayed out)
+
+3. RESPONSE CONTAINER:
+   - Element: main[role="main"] or div containing conversation turns
+   - Location: Scrollable area above input
+   - Contains: Multiple div[data-testid="conversation-turn-*"] elements
+   - Structure: User message followed by assistant response
+
+4. INDIVIDUAL MESSAGES:
+   - User: div[data-message-author-role="user"]
+   - Assistant: div[data-message-author-role="assistant"]
+   - Content: Often wrapped in markdown processing divs
+   - Timestamp: Usually in sibling or child elements
+
+INTERACTION PATTERNS:
+====================
+
+1. Send Message:
+   - Focus contenteditable div
+   - Set textContent or innerHTML
+   - Dispatch 'input' event
+   - Click send button or press Enter
+
+2. Read Responses:
+   - Query all div[data-message-author-role="assistant"]
+   - Get text content from latest element
+   - Handle markdown/formatted content
+
+3. Monitor for New Messages:
+   - Use MutationObserver on conversation container
+   - Watch for new conversation-turn elements
+   - Detect when assistant stops typing (loading indicators disappear)
+
+COMMON CSS CLASSES (May Change):
+===============================
+
+Input Area:
+- .relative (container)
+- .flex (layout)
+- .min-h-* (height constraints)
+- .max-h-* (height limits)
+
+Messages:
+- .group (hover effects)
+- .w-full (full width)
+- .text-base (font size)
+- .gap-* (spacing)
+
+Buttons:
+- .btn (base button)
+- .btn-primary (send button)
+- .disabled (inactive state)
+- .flex, .items-center, .justify-center (layout)
+
+RESPONSIVE CONSIDERATIONS:
+=========================
+
+Mobile:
+- Input may be in fixed position overlay
+- Send button might be inline or floating
+- Conversation scrolling behavior may differ
+
+Desktop:
+- Fixed sidebar navigation
+- Input area typically at bottom
+- Wider conversation container
+
+ACCESSIBILITY ATTRIBUTES:
+========================
+
+- aria-label: "Send message", "Message input"
+- role: "textbox", "button", "main"
+- aria-expanded: For collapsible elements
+- tabindex: For keyboard navigation
+- aria-describedby: For input descriptions
+
+TIMING CONSIDERATIONS:
+=====================
+
+- Wait for page load: ~2-3 seconds
+- Message sending delay: ~100-200ms
+- Response generation: Variable (5-60+ seconds)
+- DOM updates: ~100-500ms after interactions
+- Rate limiting: Avoid rapid successive messages

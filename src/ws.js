@@ -1,0 +1,1 @@
+const WebSocket = require("ws"); const wss = new WebSocket.Server({port:8081}); wss.on("connection", ws => { ws.on("message", msg => { console.log(msg); ws.send("ack"); }); }); console.log("WS on 8081");

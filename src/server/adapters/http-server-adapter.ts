@@ -10,6 +10,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { Server } from 'http';
+import { ImageGenerationRequestedEvent } from '../../core/events/server-events';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Port interface for HTTP server operations
@@ -244,15 +246,16 @@ export class HttpServerAdapter extends HttpServerPort {
     });
 
     // Automation dispatch endpoint
-    this.registerRoute('POST', '/api/automation/dispatch', (req: Request, res: Response) => {
+    this.registerRoute('POST', '/api/automation/dispatch', (req: Request, res: Response): void => {
       try {
         const { extensionId, tabId, action, payload } = req.body;
         
         // Validate required fields
         if (!extensionId || !action) {
-          return res.status(400).json({
+          res.status(400).json({
             error: 'Missing required fields: extensionId, action'
           });
+          return;
         }
 
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -322,6 +325,83 @@ export class HttpServerAdapter extends HttpServerPort {
         url: `ws://localhost:${this.port + 1}/ws`,
         activeConnections: 0,
         protocol: 'websocket',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Image generation endpoint for CLI
+    this.registerRoute('POST', '/api/images/generate', async (req: Request, res: Response): Promise<void> => {
+      try {
+        const { prompt, model = 'dall-e-3', parameters = {}, userId } = req.body;
+        
+        // Validate required fields
+        if (!prompt) {
+          res.status(400).json({
+            error: 'Missing required field: prompt'
+          });
+          return;
+        }
+
+        const requestId = uuidv4();
+        const correlationId = uuidv4();
+        
+        // Create ImageGenerationRequestedEvent
+        const event = new ImageGenerationRequestedEvent(
+          requestId,
+          prompt,
+          model,
+          parameters,
+          userId || 'cli-user',
+          correlationId
+        );
+
+        console.log(`🎨 Image generation request received:`, {
+          requestId,
+          prompt: prompt.substring(0, 50) + '...',
+          model,
+          parameters
+        });
+
+        // TODO: Emit event to event bus which will be handled by WebSocketServerAdapter
+        // For now, we'll need to wire this up with the WebSocketServerAdapter
+        
+        res.json({
+          requestId,
+          status: 'accepted',
+          message: 'Image generation request submitted',
+          correlationId,
+          timestamp: new Date().toISOString()
+        });
+
+      } catch (error) {
+        console.error('❌ Error processing image generation request:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Get image generation status
+    this.registerRoute('GET', '/api/images/:requestId/status', (req: Request, res: Response) => {
+      const { requestId } = req.params;
+      
+      // TODO: Query status from event store or state management
+      res.json({
+        requestId,
+        status: 'processing',
+        progress: 50,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Get generated image
+    this.registerRoute('GET', '/api/images/:requestId', (req: Request, res: Response) => {
+      const { requestId } = req.params;
+      
+      // TODO: Return image information or download link
+      res.json({
+        requestId,
+        status: 'completed',
+        imageUrl: null,
+        imagePath: null,
         timestamp: new Date().toISOString()
       });
     });

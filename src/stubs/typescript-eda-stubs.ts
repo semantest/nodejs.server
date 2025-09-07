@@ -4,7 +4,10 @@
 
 // Domain stubs
 export class Event {
-  constructor() {}
+  public occurredOn: Date;
+  constructor() {
+    this.occurredOn = new Date();
+  }
 }
 
 export function listen(eventClass: any) {

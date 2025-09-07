@@ -55,7 +55,9 @@ export interface MCPContext {
   expiresAt: Date;
   confidence: number;
   capabilities: string[];
-  
+}
+
+export class MCPContextHelper {
   static fromJSON(data: any): MCPContext {
     return {
       id: data.id,
